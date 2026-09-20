@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Fork: `tool_mark_read` opens an exact existing conversation in Messages and verifies incoming read state using read-only database queries. Ambiguous targets and unconfirmed updates fail explicitly; no SIP changes, private framework injection, or database writes are required. Includes side-effect annotations and regression tests.
+
 ### Security
 - GitHub Actions workflows now declare read-only `GITHUB_TOKEN` permissions at the workflow level and grant write scopes only on the jobs that upload SARIF, submit SBOMs, comment on PRs, or publish releases.
 - Contact/message text cleaning no longer uses a regex character class spanning U+24C2–U+1F251, which CodeQL flagged as an overly permissive range and which also stripped CJK.

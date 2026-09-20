@@ -38,6 +38,10 @@
   },
   "tools": [
     {
+      "name": "tool_mark_read",
+      "description": "Opens one exact conversation in Messages and verifies existing incoming unread messages become read locally. Requires Full Disk Access and an unlocked GUI session; brings Messages forward and may send read receipts."
+    },
+    {
       "name": "tool_get_recent_messages",
       "description": "Read-only recent Messages lookup with optional contact or group chat ID filtering. Requires Full Disk Access and returns a plain-text message summary."
     },

@@ -286,6 +286,7 @@ this.
 | `tool_check_contacts`              | Return a contact count and a small sample                                                              | Read-only                |
 | `tool_check_addressbook`           | Diagnose Contacts/AddressBook database access                                                          | Read-only                |
 | `tool_send_message`                | Send one direct or group message through Messages.app                                                  | **Sends a real message** |
+| `tool_mark_read`                   | Open one exact conversation and verify incoming messages become read locally                           | **Changes read state; may send read receipts** |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -317,6 +318,29 @@ selections returned after an ambiguous contact search.
 For a group conversation, call `tool_get_chats`, pass its chat ID to
 `tool_send_message`, and set `group_chat=true`. Use the same ID as `chat_id` in
 `tool_get_recent_messages` to read that conversation.
+
+### Marking a conversation read
+
+Call `tool_mark_read(chat_id="+14155551234")` for an exact phone/email chat
+identifier, or use a group ID returned by `tool_get_chats`. Exact full GUIDs such
+as `iMessage;-;+14155551234` are preferred; if an identifier matches multiple
+services, the tool returns their GUIDs and refuses to choose. It never uses
+fuzzy names, creates a new chat, or writes to `chat.db`.
+
+This tool requires explicit user authorization at the MCP client. It opens the
+conversation in Messages using its newest message's deep link and verifies the
+pre-existing incoming unread messages become read through read-only queries.
+Full Disk Access and an unlocked, signed-in macOS GUI session are required. SIP
+can stay enabled; Accessibility and private-framework injection are not used.
+
+Messages comes to the foreground and stays on that conversation: subsequent
+messages may also be read automatically. Read receipts follow your Messages
+settings. A successful app launch is not a successful read-state change; the
+tool reports an error if the existing unread messages remain unread. The macOS
+deep link is undocumented and may stop working on future OS versions. Manually
+set unread badges, iCloud synchronization, and receipt delivery are not
+independently verified. With no incoming unread messages, the tool reports that
+state without claiming to have changed any messages.
 
 ### Attachments
 
