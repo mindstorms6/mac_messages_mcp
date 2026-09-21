@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Fork: added read-only `tool_get_latest_contact_activity` across all chats containing exact contact address aliases, with all-sender/group/outgoing/reaction/attachment coverage, typed untrusted output, explicit coverage limits and schema/decode errors. Existing message-read and mark-read behavior is unchanged.
 - Fork: `tool_mark_read` opens an exact existing conversation in Messages and verifies incoming read state using read-only database queries. Ambiguous targets and unconfirmed updates fail explicitly; no SIP changes, private framework injection, or database writes are required. Includes side-effect annotations and regression tests.
 
 ### Security

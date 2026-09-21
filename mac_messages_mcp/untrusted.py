@@ -200,3 +200,21 @@ def bound_untrusted_output(fn: _F) -> _F:
         return present_untrusted_output(fn(*args, **kwargs))
 
     return wrapper  # type: ignore[return-value]
+
+
+def sanitize_untrusted_structure(value: Any) -> Any:
+    """Neutralize JSON values inside an explicitly labeled untrusted envelope.
+
+    Keys must be server-owned constants, not Messages/Contacts strings. Preserve
+    numeric/null/boolean types and machine-readable timestamps/identifiers while
+    escaping controls and defanging fence tokens in every string value.
+    """
+    if isinstance(value, str):
+        return _defang_fence_tokens(neutralize_untrusted_text(value))
+    if isinstance(value, dict):
+        return {key: sanitize_untrusted_structure(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [sanitize_untrusted_structure(item) for item in value]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    raise TypeError("Structured output must contain JSON-compatible values")

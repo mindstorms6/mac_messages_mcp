@@ -38,6 +38,10 @@
   },
   "tools": [
     {
+      "name": "tool_get_latest_contact_activity",
+      "description": "Read-only latest activity across every direct, named-group and unnamed-group chat containing any exact phone/email alias. Includes all senders, outgoing messages, reactions and attachment metadata; returns structured coverage and timestamps without marking read."
+    },
+    {
       "name": "tool_mark_read",
       "description": "Opens one exact conversation in Messages and verifies existing incoming unread messages become read locally. Requires Full Disk Access and an unlocked GUI session; brings Messages forward and may send read receipts."
     },
