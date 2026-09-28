@@ -34,6 +34,63 @@ Messages.app automation only when the client explicitly calls the send tool.
 
 ## Quick start
 
+### Paginated history and tunnel-safe attachments
+
+`tool_get_recent_messages` and `tool_fuzzy_search_messages` accept `limit`
+(1–100 scanned messages per call), `before` (exclusive), `after` (inclusive),
+and `cursor`. Both accept `chat_id` or `contact`, mutually exclusively. Contact
+filters select message handles; chat filters include every sender in the chat.
+Fuzzy search accepts an unambiguous name or exact phone/email; resolve ambiguous
+names with `tool_find_contact` first. Date bounds use ISO-8601; dates without an
+offset mean UTC. Set `hours=0` to search older history without a relative cutoff.
+
+Read `next_cursor` from the response and call again with the same filters until
+`has_more=false`. Even a page with zero matches can have a continuation. The
+cursor freezes the relative time window and uses date plus message ROWID to
+avoid losing messages with identical timestamps. It is not a database snapshot:
+Messages/iCloud edits, deletions and backfills can still change history mid-scan.
+Scores are sorted within each page; full bodies are searched, while displayed
+bodies have explicitly marked 500-character previews. No 10,000-message cutoff
+remains. Example first page:
+
+```json
+{"search_term":"rejected","hours":0,"threshold":0.99,"before":"2026-09-01","limit":100}
+```
+
+Inline images are capped at 3,000,000 decoded bytes to leave room for base64
+and protocol envelopes under a 10 MiB tunnel response limit. `max_bytes` cannot
+override that ceiling. HEIC conversion runs in a disposable worker with a
+20-second timeout and produces a bounded PNG preview (at most 2048 pixels per
+side, possibly smaller). The original file is unchanged and its path is always
+returned. Failed conversion or oversized output returns metadata instead of an
+oversized protocol response.
+
+Voice-message attachments, including CAF files with a blank MIME type, return
+inline MCP `AudioContent` (`audio/mpeg`) through the same `tool_get_attachment`
+call. FFmpeg converts locally to mono MP3 at 64 kbps; it needs a seekable
+temporary file for CAF packet tables. Conversion has a 20-second timeout, an
+8 MB source ceiling, and a 3 MB output ceiling (also limited by `max_bytes`).
+Over-limit or failed conversions return an explicit metadata-only fallback;
+the original is never changed. Install `ffmpeg` for non-Nix installations; the
+Nix package includes it.
+
+Voice notes also return a plain-text **machine transcript**, produced offline
+with `whisper.cpp`. The Nix package includes the content-pinned English
+`small.en-q5_1` model; no speech API, API key, or runtime model download is used.
+For other installations, install `whisper-cli` and set `MESSAGES_WHISPER_MODEL`
+to a local English Whisper model. Recognition uses four CPU threads, keeping
+the background service independent of GPU/session access. Non-English speech
+is not supported by this default model.
+
+Transcription accepts complete clips up to five minutes, limits decoding to
+10 seconds and recognition to 25 seconds, and permits one recognition at a
+time. Transcripts are capped at 64 KB and labelled as potentially inaccurate,
+untrusted message content. Temporary audio/text files are private and removed
+after the request; transcripts are not persistently cached. Missing models,
+timeouts, or recognition failures are explicit and do not prevent audio
+retrieval. No silent cloud fallback is used. The original recording remains
+the source of truth, especially for names, amounts, and negations.
+
 ### 1. Install `uv`
 
 ```bash

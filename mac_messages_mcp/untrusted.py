@@ -18,7 +18,7 @@ import re
 import unicodedata
 from typing import Any, Callable, TypeVar
 
-from mcp.server.fastmcp import Image
+from mcp.server.fastmcp import Audio, Image
 
 UNTRUSTED_TAG = "untrusted-mcp-output"
 UNTRUSTED_OPEN = f"<{UNTRUSTED_TAG}>"
@@ -179,7 +179,7 @@ def present_untrusted_output(value: Any) -> Any:
     """
     if isinstance(value, _PresentedUntrusted):
         return value
-    if _is_mcp_image(value):
+    if _is_mcp_image(value) or isinstance(value, Audio):
         return value
     if isinstance(value, dict):
         return {key: present_untrusted_output(item) for key, item in value.items()}

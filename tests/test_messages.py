@@ -710,7 +710,8 @@ class TestGetRecentMessagesChatFilter(unittest.TestCase):
 
         sql, params = mock_query.call_args[0]
         self.assertIn("chat_message_join", sql)
-        self.assertEqual(params[-1], 7)
+        self.assertEqual(params[-2], 7)
+        self.assertEqual(params[-1], 101)  # one extra row to detect continuation
         self.assertIn("[Family]", result)
         self.assertIn("group hello", result)
 

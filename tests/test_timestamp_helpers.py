@@ -157,8 +157,8 @@ class TestFuzzySearchTimestampParam(unittest.TestCase):
         # First call's first positional arg = sql, second = params tuple
         sql, params = mock_query.call_args[0]
         # Time-window cutoff is the first param (insert(0, ...) in source)
-        cutoff_str = params[0]
-        self.assertIsInstance(cutoff_str, str)
+        cutoff_str = params[1]  # frozen upper bound, then time-window cutoff
+        self.assertIsInstance(cutoff_str, int)
         cutoff_ns = int(cutoff_str)
 
         expected_low = _to_apple_ns(before - timedelta(hours=24))
