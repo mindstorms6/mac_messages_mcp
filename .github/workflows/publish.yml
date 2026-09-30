@@ -84,7 +84,12 @@ jobs:
         run: uv run --frozen --extra dev python scripts/bump_version.py --check --expected "${VERSION}"
 
       - name: Test
-        run: uv run --frozen --extra dev pytest
+        # The real audio conversion regression test exercises this runtime dependency.
+        # Python dependency installation does not supply the ffmpeg executable.
+        # Keep this check active instead of skipping it on clean hosted runners.
+        run: |
+          command -v ffmpeg || brew install ffmpeg
+          uv run --frozen --extra dev pytest
 
       - name: Black formatting
         run: uv run --frozen --extra dev black --check .
