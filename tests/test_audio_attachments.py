@@ -9,7 +9,7 @@ import wave
 from unittest.mock import patch
 
 import pytest
-from mcp.server.fastmcp import Audio
+from mcp.server.mcpserver import Audio
 
 from mac_messages_mcp.audio import audio_to_mp3, is_audio_attachment
 from mac_messages_mcp.messages import get_attachment
@@ -52,9 +52,9 @@ def test_audio_survives_untrusted_wrapper_and_mcp_serialization(note):
         wire_result = asyncio.run(
             mcp.call_tool("tool_get_attachment", {"attachment_id": 1})
         )
-    content = wire_result[0] if isinstance(wire_result, tuple) else wire_result
+    content = wire_result.content
     audio = next(c for c in content if c.type == "audio")
-    assert audio.mimeType == "audio/mpeg"
+    assert audio.mime_type == "audio/mpeg"
     assert base64.b64decode(audio.data) == mp3
     assert len(json.dumps([c.model_dump(mode="json") for c in content])) < 10_000_000
 

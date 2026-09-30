@@ -5,7 +5,7 @@ import json
 import subprocess
 from unittest.mock import patch
 
-from mac_messages_mcp.messages import get_attachment, _heic_to_png_bytes
+from mac_messages_mcp.messages import _heic_to_png_bytes, get_attachment
 from mac_messages_mcp.server import mcp
 from tests.test_attachments import make_attachment_row
 

@@ -151,7 +151,7 @@ def test_deep_link_guid_is_encoded_not_executed(db, launch):
 def test_mcp_tool_is_registered_and_not_readonly(db, launch):
     tools = asyncio.run(mcp.list_tools())
     tool = next(tool for tool in tools if tool.name == "tool_mark_read")
-    assert tool.inputSchema["required"] == ["chat_id"]
-    assert tool.annotations.readOnlyHint is False
-    assert tool.annotations.idempotentHint is True
+    assert tool.input_schema["required"] == ["chat_id"]
+    assert tool.annotations.read_only_hint is False
+    assert tool.annotations.idempotent_hint is True
     assert "<untrusted-mcp-output>" in tool_mark_read(None, "unknown")

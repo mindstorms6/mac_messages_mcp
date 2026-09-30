@@ -132,7 +132,7 @@ def test_text_and_audio_survive_mcp_serialization(tmp_path, transcript):
         patch("mac_messages_mcp.messages.transcribe_audio", return_value=transcript),
     ):
         result = asyncio.run(mcp.call_tool("tool_get_attachment", {"attachment_id": 1}))
-    content = result[0] if isinstance(result, tuple) else result
+    content = result.content
     assert any(item.type == "audio" for item in content)
     text = next(item.text for item in content if item.type == "text")
     assert text.count("</untrusted-mcp-output>") == 1

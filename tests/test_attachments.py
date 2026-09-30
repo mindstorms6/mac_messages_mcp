@@ -294,7 +294,7 @@ class TestGetAttachment(unittest.TestCase):
             ]
             result = get_attachment(42)
         # Returns a list: [metadata_text, Image]
-        from mcp.server.fastmcp import Image
+        from mcp.server.mcpserver import Image
 
         self.assertIsInstance(result, list)
         self.assertEqual(len(result), 2)

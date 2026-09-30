@@ -15,12 +15,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from mcp.server.fastmcp import Audio, Image
+from mcp.server.mcpserver import Audio, Image
 from thefuzz import fuzz
 
-from .pagination import HistoryPage
 from .audio import MAX_AUDIO_SOURCE_BYTES, audio_to_mp3, is_audio_attachment
-from .transcription import transcribe_audio
+from .pagination import HistoryPage
 from .phone import (
     canonical_handle,
     contact_key,
@@ -31,6 +30,7 @@ from .phone import (
     lookup_keys,
     to_dialable_e164,
 )
+from .transcription import transcribe_audio
 from .untrusted import bound_untrusted_output, neutralize_untrusted_text
 
 _APPLESCRIPT_TIMEOUT_SECONDS = 30

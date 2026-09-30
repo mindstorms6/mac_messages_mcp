@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: Communications :: Chat",
 ]
 dependencies = [
-    "mcp[cli]>=1.2.0,<2.0.0", # For FastMCP functionality with CLI support
+    "mcp[cli]>=2.2.0,<3.0.0", # MCP 2.0 plus backward-compatible tools
     "thefuzz>=0.20.0",
     "phonenumbers>=8.13.0", # E.164 normalization against the Mac's configured region
     "python-Levenshtein>=0.23.0", # Optional but recommended for performance

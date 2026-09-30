@@ -118,5 +118,5 @@ def test_mcp_schemas_expose_continuation():
     tools = {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
     for name in ("tool_get_recent_messages", "tool_fuzzy_search_messages"):
         assert {"cursor", "before", "after", "limit", "contact", "chat_id"} <= set(
-            tools[name].inputSchema["properties"]
+            tools[name].input_schema["properties"]
         )

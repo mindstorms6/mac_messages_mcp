@@ -18,7 +18,7 @@ import re
 import unicodedata
 from typing import Any, Callable, TypeVar
 
-from mcp.server.fastmcp import Audio, Image
+from mcp.server.mcpserver import Audio, Image
 
 UNTRUSTED_TAG = "untrusted-mcp-output"
 UNTRUSTED_OPEN = f"<{UNTRUSTED_TAG}>"

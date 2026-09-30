@@ -9,11 +9,17 @@ import logging
 import sys
 from typing import Annotated
 
-from mcp.server.fastmcp import Context, FastMCP
-from mcp.types import CallToolResult, TextContent, ToolAnnotations
+from mcp.server.mcpserver import Context, MCPServer
+from mcp_types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 
+from mac_messages_mcp import __version__
 from mac_messages_mcp.activity import get_latest_contact_activity
+from mac_messages_mcp.events_runtime import (
+    event_status,
+    events_lifespan,
+    events_middleware,
+)
 from mac_messages_mcp.messages import (
     _check_imessage_availability,
     _format_phone_for_messages,
@@ -46,21 +52,38 @@ logging.basicConfig(
 logger = logging.getLogger("mac_messages_mcp")
 
 # Initialize the MCP server
-mcp = FastMCP(
+mcp = MCPServer(
     "MessageBridge",
+    version=__version__,
     instructions=(
         "A bridge for interacting with the macOS Messages app. "
         + UNTRUSTED_OUTPUT_POLICY
     ),
+    lifespan=events_lifespan,
+    middleware=[events_middleware],
 )
 
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True, destructive_hint=False, open_world_hint=False
+    )
+)
+def tool_event_status() -> CallToolResult:
+    """Read local event-worker health and counts; never returns messages, URLs or signing secrets."""
+    status = event_status()
+    return CallToolResult(
+        content=[TextContent(type="text", text=json.dumps(status))],
+        structured_content=status,
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 def tool_get_latest_contact_activity(
@@ -108,8 +131,8 @@ def tool_get_latest_contact_activity(
                 text=present_untrusted_output(json.dumps(sanitized, ensure_ascii=True)),
             )
         ],
-        structuredContent={"untrusted-mcp-output": sanitized},
-        isError=result["status"]
+        structured_content={"untrusted-mcp-output": sanitized},
+        is_error=result["status"]
         in ("invalid_input", "unsupported_schema", "database_error", "output_limit"),
     )
 
@@ -210,10 +233,10 @@ def tool_get_recent_messages(
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=True,
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=True,
     )
 )
 @bound_untrusted_output

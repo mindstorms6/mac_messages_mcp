@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "messages": {
+      "type": "stdio",
+      "command": "mac-messages-mcp",
+      "env": {
+        "MAC_MESSAGES_EVENTS": "1",
+        "MAC_MESSAGES_EVENTS_STATE_DIR": "${PLUGIN_DATA}/events"
+      }
+    }
+  }
+}

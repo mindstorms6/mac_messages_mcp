@@ -1,0 +1,8 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "mac-messages",
+  "version": "1.1.0",
+  "description": "Local macOS Messages tools with opt-in message and reaction webhook events.",
+  "repository": "https://github.com/mindstorms6/mac_messages_mcp",
+  "license": "MIT"
+}

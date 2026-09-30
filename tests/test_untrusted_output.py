@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 from unittest.mock import mock_open as unittest_mock_open
 from unittest.mock import patch
 
-from mcp.server.fastmcp import Image
+from mcp.server.mcpserver import Image
 
 from mac_messages_mcp.messages import (
     _sanitize_message_body,

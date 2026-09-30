@@ -31,6 +31,16 @@ Messages.app automation only when the client explicitly calls the send tool.
 - Return small images inline, convert HEIC images to PNG, or return a local path
   for larger and non-image files
 - Diagnose Messages and Contacts database permissions from inside the MCP client
+- Subscribe to new messages and added/removed reactions via signed webhooks
+  (opt-in MCP 2.0 events; all conversations or exact filters)
+
+## Message and reaction events
+
+See [eventing setup, protocol and privacy guarantees](docs/events.md). This fork
+includes durable subscriptions/outbox delivery and a portable plugin wrapper.
+Events are disabled by default, require an MCP 2.0-capable client or tunnel,
+and send metadata only after an explicit subscription verifies its callback.
+No machine-specific configuration or deployment is bundled.
 
 ## Quick start
 
