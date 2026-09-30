@@ -20,10 +20,13 @@ def history(tmp_path):
             CREATE TABLE message (date INTEGER, text TEXT, attributedBody BLOB,
                 is_from_me INTEGER, handle_id INTEGER, cache_roomnames TEXT);
             CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);
-            CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, guid TEXT, chat_identifier TEXT, room_name TEXT, display_name TEXT);
+            CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, guid TEXT,
+                chat_identifier TEXT, room_name TEXT, display_name TEXT,
+                style INTEGER);
             CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
             INSERT INTO handle (id) VALUES ('a@example.com'), ('b@example.com');
-            INSERT INTO chat (guid,chat_identifier,room_name,display_name) VALUES ('iMessage;+;chat1', 'chat1', 'chat1', 'Test');
+            INSERT INTO chat (guid,chat_identifier,room_name,display_name,style)
+                VALUES ('iMessage;+;chat1', 'chat1', 'chat1', 'Test', 43);
         """)
         date = parse_date("2025-01-01")
         conn.executemany(

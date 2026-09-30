@@ -24,7 +24,7 @@ Messages.app automation only when the client explicitly calls the send tool.
 - Fuzzy-search message text across a time window, including all available
   history
 - Find Contacts by approximate name and return send-ready phone numbers
-- List named group chats and use their chat IDs for reads or sends
+- List existing named and unnamed group chats and use their canonical IDs for reads or sends
 - Send iMessage, with SMS/RCS fallback for eligible phone recipients
 - Check whether a recipient appears reachable through iMessage before sending
 - Find attachments by date, sender, and MIME type
@@ -346,7 +346,7 @@ this.
 | `tool_get_latest_contact_activity` | Latest all-sender activity across every chat containing any supplied phone/email alias                 | Read-only                |
 | `tool_fuzzy_search_messages`       | Search message bodies by approximate text match; defaults to 30 days, or use `hours=0` for all history | Read-only                |
 | `tool_find_contact`                | Fuzzy-match a name in Contacts and return phone numbers                                                | Read-only                |
-| `tool_get_chats`                   | List named group chats and their identifiers                                                           | Read-only                |
+| `tool_get_chats`                   | List existing named and unnamed group chats with canonical GUIDs and bare identifiers                   | Read-only                |
 | `tool_search_attachments`          | Find attachment metadata by date, contact, MIME type, and limit                                        | Read-only                |
 | `tool_get_attachment`              | Fetch one attachment by ID, inline when supported or as a local path                                   | Read-only                |
 | `tool_check_imessage_availability` | Check likely iMessage availability for a phone number or email                                         | Read-only                |

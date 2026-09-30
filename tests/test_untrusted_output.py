@@ -466,6 +466,7 @@ class TestChatsContactsToolsAndResources:
             {
                 "display_name": f"Example Group\n{_FORGED_LINE}",
                 "chat_identifier": f"chat-example\n{_FORGED_LINE}",
+                "guid": f"iMessage;+;chat-example\n{_FORGED_LINE}",
             }
         ],
     )

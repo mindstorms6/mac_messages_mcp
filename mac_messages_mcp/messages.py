@@ -668,8 +668,9 @@ def send_message(recipient: str, message: str, group_chat: bool = False) -> str:
 
     Args:
         recipient: Phone number, email, contact name, or special format for contact selection
-                  Use "contact:N" to select the Nth contact from a previous ambiguous match
-                  For group chats, use the chat ID from tool_get_chats (e.g., "chat123456789")
+                  Use "contact:N" to select the Nth contact from a previous ambiguous match.
+                  For group chats, use the canonical GUID or unique bare identifier
+                  returned by tool_get_chats.
         message: Message text to send
         group_chat: Whether this is a group chat (uses chat ID instead of buddy)
 
@@ -679,10 +680,25 @@ def send_message(recipient: str, message: str, group_chat: bool = False) -> str:
     # Convert to string to ensure phone numbers work properly
     recipient = str(recipient).strip()
 
-    # For group chats, skip contact lookup and use the chat ID directly
+    # Group sends must resolve to one existing group row before any AppleScript runs.
+    # This prevents a caller from guessing participants or handing Messages an
+    # ambiguous/nonexistent identifier. Always dispatch with the canonical GUID;
+    # it is the identifier understood by `chat id` even for unnamed groups.
     if group_chat:
-        # Use the recipient directly as the chat ID
-        return _send_message_to_recipient(recipient, message, group_chat=True)
+        try:
+            chat = _find_chat_by_identifier(recipient)
+        except ValueError as exc:
+            return f"Error: {exc}"
+        if not chat:
+            return (
+                "Error: Existing group chat not found. Use tool_get_chats and pass "
+                "its exact ID; participant lists are not accepted."
+            )
+        guid = str(chat.get("guid") or "").strip()
+        if not guid:
+            return "Error: Existing group chat has no canonical GUID and cannot be sent to."
+        display_name = str(chat.get("display_name") or "").strip() or "Unnamed group"
+        return _send_message_to_recipient(guid, message, display_name, group_chat=True)
 
     # Handle contact selection format (contact:N)
     if recipient.lower().startswith("contact:"):
@@ -1022,33 +1038,54 @@ def get_contact_name(handle_id: int) -> str:
 
 
 def _find_chat_by_identifier(chat_id: str) -> Optional[Dict[str, Any]]:
-    """Find a Messages chat row by chat_identifier or room_name."""
+    """Resolve one existing group by canonical GUID or unique bare identifier.
+
+    Full GUIDs are preferred and win over a bare-identifier collision. Bare
+    identifiers remain supported for compatibility, but are rejected when they
+    match more than one group so reads and sends never guess a conversation.
+    """
     chat_id = str(chat_id).strip()
     if not chat_id:
         return None
 
     variants = {chat_id}
-    if chat_id.startswith("chat"):
+    if ";" in chat_id:
+        variants.add(chat_id.rsplit(";", 1)[-1])
+    elif chat_id.startswith("chat"):
         variants.add(f"iMessage;-;{chat_id}")
         variants.add(f"iMessage;+;{chat_id}")
-    elif chat_id.startswith("iMessage;"):
-        short_id = chat_id.rsplit(";", 1)[-1]
-        if short_id.startswith("chat"):
-            variants.add(short_id)
 
-    placeholders = ", ".join(["?" for _ in variants])
+    ordered_variants = sorted(variants)
+    placeholders = ", ".join(["?" for _ in ordered_variants])
     query = f"""
-    SELECT ROWID, display_name, chat_identifier, room_name
+    SELECT ROWID, guid, display_name, chat_identifier, room_name
     FROM chat
-    WHERE chat_identifier IN ({placeholders})
-       OR room_name IN ({placeholders})
-    LIMIT 1
+    WHERE style = 43
+      AND (
+           guid IN ({placeholders})
+        OR chat_identifier IN ({placeholders})
+        OR room_name IN ({placeholders})
+      )
     """
-    params = tuple(variants) + tuple(variants)
+    params = tuple(ordered_variants) + tuple(ordered_variants) + tuple(ordered_variants)
     rows = query_messages_db(query, params)
     if not rows or "error" in rows[0]:
         return None
-    return rows[0]
+
+    # A join-free chat query should already be unique by ROWID, but deduplicate
+    # defensively in case a test double or future schema produces repeats.
+    unique = {row["ROWID"]: row for row in rows}
+    matches = list(unique.values())
+    if len(matches) == 1:
+        return matches[0]
+
+    exact_guid = [row for row in matches if row.get("guid") == chat_id]
+    if len(exact_guid) == 1:
+        return exact_guid[0]
+    raise ValueError(
+        "Group chat identifier is ambiguous. Use the exact full GUID from "
+        "tool_get_chats."
+    )
 
 
 @bound_untrusted_output
@@ -1100,7 +1137,10 @@ def get_recent_messages(
         chat_id = str(chat_id).strip()
         if not chat_id:
             return "Error: chat_id cannot be empty."
-        chat = _find_chat_by_identifier(chat_id)
+        try:
+            chat = _find_chat_by_identifier(chat_id)
+        except ValueError as exc:
+            return f"Error: {exc}"
         if not chat:
             return f"No group chat found with chat_id '{chat_id}'. Use tool_get_chats to list available group chats."
         chat_row_id = chat["ROWID"]
@@ -1369,7 +1409,10 @@ def fuzzy_search_messages(
         return f"Error: {exc}"
     clauses, filter_params = [], []
     if chat_id:
-        chat = _find_chat_by_identifier(str(chat_id).strip())
+        try:
+            chat = _find_chat_by_identifier(str(chat_id).strip())
+        except ValueError as exc:
+            return f"Error: {exc}"
         if not chat:
             return "Error: Chat not found. Use tool_get_chats for an exact chat_id."
         clauses.append(
