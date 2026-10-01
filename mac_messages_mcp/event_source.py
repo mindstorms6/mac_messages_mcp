@@ -30,6 +30,16 @@ class MessageSource:
 
     def identity(self) -> str:
         stat = Path(self.path).stat()
+        # Darwin renumbers st_dev across boots. Creation time is immutable for
+        # this file, unlike ctime/mtime, and distinguishes reused inode numbers.
+        birth = getattr(stat, "st_birthtime", None)
+        if birth is None:
+            return f"{stat.st_dev}:{stat.st_ino}"
+        material = f"{self.path}\0{stat.st_ino}\0{birth!r}"
+        return "birth-v1:" + hashlib.sha256(material.encode()).hexdigest()
+
+    def legacy_identity(self) -> str:
+        stat = Path(self.path).stat()
         return f"{stat.st_dev}:{stat.st_ino}"
 
     def maximum(self) -> int:

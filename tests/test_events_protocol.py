@@ -45,6 +45,18 @@ class Peer:
 @pytest.fixture
 def peer(tmp_path, database, request):
     deliveries = tmp_path / "deliveries.jsonl"
+    options = getattr(request, "param", True)
+    if isinstance(options, dict):
+        if options.get("missing_database"):
+            database.rename(database.with_suffix(".waiting"))
+        if options.get("changed_source"):
+            from mac_messages_mcp.event_source import MessageSource
+            from mac_messages_mcp.events import EventEngine
+
+            engine = EventEngine(str(tmp_path / "state"), MessageSource(str(database)))
+            with engine.db:
+                engine._set("source_identity", "different-database")
+            engine.close()
     env = dict(
         os.environ,
         MAC_MESSAGES_EVENTS="1" if getattr(request, "param", True) else "0",
@@ -160,3 +172,44 @@ def test_events_disabled_by_default(peer):
         "tools/call", {"name": "tool_event_status", "arguments": {}}
     )["result"]
     assert result["structuredContent"] == {"enabled": False}
+
+
+@pytest.mark.parametrize("peer", [{"missing_database": True}], indirect=True)
+def test_missing_database_does_not_stop_tools_and_recovers(peer, database):
+    client, _ = peer
+    tools = client.request("tools/list")["result"]["tools"]
+    assert any(t["name"] == "tool_get_recent_messages" for t in tools)
+    status = client.request(
+        "tools/call", {"name": "tool_event_status", "arguments": {}}
+    )["result"]["structuredContent"]
+    assert status == {
+        "enabled": False,
+        "configured": True,
+        "retrying": True,
+        "last_error": "FileNotFoundError",
+    }
+    assert client.request("events/subscribe", params())["error"]["code"] == -32603
+    database.with_suffix(".waiting").rename(database)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        status = client.request(
+            "tools/call", {"name": "tool_event_status", "arguments": {}}
+        )["result"]["structuredContent"]
+        if status["enabled"]:
+            break
+        time.sleep(0.05)
+    assert status["enabled"] and status["last_error"] is None
+    assert client.request("events/subscribe", params())["result"]["id"]
+
+
+@pytest.mark.parametrize("peer", [{"changed_source": True}], indirect=True)
+def test_replaced_database_pauses_events_but_keeps_tools_available(peer):
+    client, _ = peer
+    assert client.request("tools/list")["result"]["tools"]
+    assert client.request("events/list")["result"]["events"]
+    assert client.request("events/subscribe", params())["error"]["code"] == -32603
+    status = client.request(
+        "tools/call", {"name": "tool_event_status", "arguments": {}}
+    )["result"]["structuredContent"]
+    assert status["last_error"] == "SourceChangedError"
+    assert status["enabled"] is False

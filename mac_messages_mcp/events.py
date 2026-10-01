@@ -186,6 +186,10 @@ def encode(value: dict) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
+class SourceChangedError(RuntimeError):
+    """An event checkpoint cannot safely be applied to the current database."""
+
+
 class EventEngine:
     def __init__(
         self,
@@ -258,7 +262,9 @@ class EventEngine:
         """)
         with self.db:
             if self._get("source") is None:
-                self._set("source", self.source.identity())
+                identity = self.source.identity()
+                self._set("source", identity)
+                self._set("source_identity", identity)
                 self._set("highwater", str(self.source.maximum()))
                 self._set("principal", self.principal)
             if self._get("principal") != self.principal:
@@ -285,10 +291,34 @@ class EventEngine:
         )
 
     def _check_source(self) -> None:
-        if self.source.identity() != self._get("source") or self.source.maximum() < int(
-            self._get("highwater")
-        ):
-            raise RuntimeError(
+        identity = self.source.identity()
+        maximum = self.source.maximum()
+        saved = self._get("source_identity")
+        if saved is None:
+            legacy = self._get("source")
+            current_legacy = self.source.legacy_identity()
+            # Upgrade old stores without changing event IDs or queued payloads.
+            # A changed device number cannot be proven safe for legacy active
+            # subscriptions: only migrate that case when there is no event state.
+            empty = not any(
+                self.db.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()
+                for table in ("subscriptions", "pending", "outbox")
+            )
+            old_parts = legacy.split(":")
+            current_parts = current_legacy.split(":")
+            same_inode = (
+                len(old_parts) == 2
+                and all(part.isdigit() for part in old_parts)
+                and old_parts[1] == current_parts[1]
+            )
+            if maximum >= int(self._get("highwater")) and (
+                legacy == identity or legacy == current_legacy or (empty and same_inode)
+            ):
+                with self.db:
+                    self._set("source_identity", identity)
+                saved = identity
+        if identity != saved or maximum < int(self._get("highwater")):
+            raise SourceChangedError(
                 "Messages database replaced or rewound; use a fresh event state directory and resubscribe"
             )
 

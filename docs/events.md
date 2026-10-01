@@ -174,11 +174,24 @@ forensic erasure of filesystem backups or freed SQLite pages.
   inserted and removed between polls, messages never downloaded to this Mac,
   and in-place changes are not guaranteed to be observed. Database replacement
   or a ROWID rewind fails closed; stop the worker, select a fresh private state
-  directory and resubscribe after reviewing the database change.
+  directory and resubscribe after reviewing the database change. This pauses
+  events without taking ordinary Messages tools offline.
+- On macOS the database identity uses its resolved path, inode and creation
+  time, so a reboot changing the disk device number does not invalidate the
+  checkpoint. Legacy checkpoints upgrade without changing event IDs. If their
+  device number has already changed, automatic migration is limited to stores
+  with no subscriptions, queued deliveries or pending observations; active
+  legacy stores require review and resubscription.
+- Database access may be unavailable early during login. Event initialization
+  retries automatically while normal MCP tools remain available. The saved
+  checkpoint and subscriptions are preserved, and event delivery resumes only
+  after the source checks pass.
 
 `tool_event_status` reports enabled state, subscription/queue/pending counts,
 delivery/failure counters, and the last worker error type, without private
-content. A healthy worker does not prove the receiver displayed a notification.
+content. During initialization failures it reports `configured: true`,
+`enabled: false`, `retrying: true` and `last_error`; a real replacement reports
+`SourceChangedError` and still requires the review above. A healthy worker does not prove the receiver displayed a notification.
 
 ## Authorization boundary
 

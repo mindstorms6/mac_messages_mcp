@@ -30,11 +30,14 @@ VERSION = "2026-07-28"
 class EventsMiddleware:
     def __init__(self):
         self.engine: EventEngine | None = None
+        self.configured = False
+        self.startup_error: str | None = None
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
     ) -> HandlerResult:
-        if self.engine is None:
+        engine = self.engine
+        if engine is None and not self.configured:
             return await call_next(ctx)
         if ctx.method == "server/discover":
             result = await call_next(ctx)
@@ -65,10 +68,12 @@ class EventsMiddleware:
                 if params.get("cursor") is not None:
                     raise ValueError("Event catalog does not have another page")
                 result = catalog()
+            elif engine is None:
+                raise RuntimeError("Event service is initializing")
             elif ctx.method == "events/subscribe":
-                result = await asyncio.to_thread(self.engine.subscribe, params)
+                result = await asyncio.to_thread(engine.subscribe, params)
             else:
-                result = await asyncio.to_thread(self.engine.unsubscribe, params)
+                result = await asyncio.to_thread(engine.unsubscribe, params)
         except WebhookError as exc:
             raise MCPError(
                 -32015, "Callback verification failed", {"reason": str(exc)}
@@ -97,9 +102,33 @@ class EventsMiddleware:
 events_middleware = EventsMiddleware()
 
 
-def _worker(engine: EventEngine, stopped: threading.Event, interval: float) -> None:
+def _initialize_engine(directory: str, source: MessageSource) -> EventEngine | None:
+    try:
+        engine = EventEngine(directory, source)
+    except Exception as exc:
+        error = type(exc).__name__
+        if events_middleware.startup_error != error:
+            LOG.warning(
+                "Event initialization paused (%s); tools remain available", error
+            )
+        events_middleware.startup_error = error
+        return None
+    events_middleware.startup_error = None
+    events_middleware.engine = engine
+    return engine
+
+
+def _worker(
+    directory: str, source: MessageSource, stopped: threading.Event, interval: float
+) -> None:
     last_scan = 0.0
     while not stopped.is_set():
+        engine = events_middleware.engine
+        if engine is None:
+            engine = _initialize_engine(directory, source)
+            if engine is None:
+                stopped.wait(max(1.0, interval))
+                continue
         try:
             # Drain first so a full queue can recover without bypassing bounds.
             engine.deliver(limit=1)
@@ -109,8 +138,10 @@ def _worker(engine: EventEngine, stopped: threading.Event, interval: float) -> N
             engine.last_error = None
         except Exception as exc:
             # Exception text may include local DB paths/remote data; only log type.
-            engine.last_error = type(exc).__name__
-            LOG.warning("Event worker paused this iteration (%s)", type(exc).__name__)
+            error = type(exc).__name__
+            if engine.last_error != error:
+                LOG.warning("Event worker paused this iteration (%s)", error)
+            engine.last_error = error
         stopped.wait(engine.delivery_delay(interval))
 
 
@@ -131,25 +162,36 @@ async def events_lifespan(server: Any):
     source = MessageSource(
         os.environ.get("MAC_MESSAGES_EVENTS_DB", get_messages_db_path())
     )
-    engine = EventEngine(directory, source)
+    events_middleware.configured = True
+    _initialize_engine(directory, source)
     stopped = threading.Event()
     worker = threading.Thread(
         target=_worker,
-        args=(engine, stopped, interval),
+        args=(directory, source, stopped, interval),
         name="messages-events",
         daemon=True,
     )
-    events_middleware.engine = engine
     worker.start()
     try:
-        yield {"events": engine}
+        yield {"events": events_middleware.engine}
     finally:
-        events_middleware.engine = None
         stopped.set()
         await asyncio.to_thread(worker.join)
-        engine.close()
+        engine = events_middleware.engine
+        events_middleware.engine = None
+        events_middleware.configured = False
+        events_middleware.startup_error = None
+        if engine is not None:
+            engine.close()
 
 
 def event_status() -> dict:
     engine = events_middleware.engine
+    if engine is None and events_middleware.configured:
+        return {
+            "enabled": False,
+            "configured": True,
+            "retrying": True,
+            "last_error": events_middleware.startup_error,
+        }
     return {"enabled": engine is not None, **(engine.status() if engine else {})}

@@ -790,8 +790,8 @@ def run_server() -> None:
     try:
         logger.info("Starting Mac Messages MCP server...")
         mcp.run()
-    except Exception as e:
-        logger.error(f"Failed to start server: {str(e)}")
+    except Exception:
+        logger.error("Failed to start server", exc_info=True)
         sys.exit(1)
 
 
