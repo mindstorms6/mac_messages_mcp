@@ -17,6 +17,9 @@ PAYLOAD = base64.b64encode(b"harmless test fixture").decode()
 @pytest.fixture
 def sandbox(tmp_path, monkeypatch):
     monkeypatch.setenv("MAC_MESSAGES_OUTBOX_DIR", str(tmp_path / "outbox"))
+    attachments = tmp_path / "Library/Messages/Attachments"
+    attachments.mkdir(parents=True)
+    monkeypatch.setattr(sends, "_attachments_dir", lambda: attachments)
     dbpath = tmp_path / "messages.sqlite3"
     with sqlite3.connect(dbpath) as db:
         db.executescript("""
@@ -83,6 +86,15 @@ def test_native_file_and_evidence(sandbox):
     assert result["evidence"]["local_bytes_match"] is True
     assert result["evidence"]["message_guid"] == "message-guid"
     staged = native.call_args.args[1]
+    assert (
+        staged
+        == root
+        / "Library/Messages/Attachments/mac-messages-mcp"
+        / result["request_id"]
+        / result["filename"]
+    )
+    assert not (root / "outbox" / result["filename"]).exists()
+    assert (root / "outbox/requests.sqlite3").exists()
     assert staged.read_bytes() == b"harmless test fixture"
     assert staged.stat().st_mode & 0o777 == 0o600
     assert staged.parent.stat().st_mode & 0o777 == 0o700
@@ -285,3 +297,78 @@ def test_pending_and_ambiguous_evidence(sandbox):
         db.execute("INSERT INTO message_attachment_join VALUES (2,1)")
         db.execute("INSERT INTO chat_message_join VALUES (1,2)")
     assert sends.attachment_send_status(result["request_id"])["status"] == "ambiguous"
+
+
+def test_native_agent_can_only_read_staged_messages_store(sandbox):
+    root, _, native = sandbox
+    original = native.side_effect
+
+    def agent_read(recipient, path):
+        # Model the actual imagent sandbox denial observed in the failed test:
+        # Application Support/outbox is unreadable; Messages/Attachments is allowed.
+        assert path.is_relative_to(root / "Library/Messages/Attachments")
+        return original(recipient, path)
+
+    native.side_effect = agent_read
+    result = send()
+    assert result["status"] == "sent"
+    assert result["evidence"]["local_bytes_match"] is True
+
+
+def test_existing_failed_outbox_request_is_never_relocated_or_retried(
+    sandbox, monkeypatch
+):
+    root, dbpath, native = sandbox
+    original_stage = sends._stage_attachment
+
+    def legacy_stage(request_id, filename, data):
+        path = root / "outbox" / filename
+        path.write_bytes(data)
+        return path
+
+    monkeypatch.setattr(sends, "_stage_attachment", legacy_stage)
+    request_id = str(uuid.uuid4())
+    first = send(request_id=request_id)
+    with sqlite3.connect(dbpath) as db:
+        db.execute("UPDATE message SET error=25, is_sent=0")
+        db.execute("UPDATE attachment SET transfer_state=6")
+    monkeypatch.setattr(sends, "_stage_attachment", original_stage)
+    legacy_file = root / "outbox" / first["filename"]
+    before = legacy_file.read_bytes()
+    duplicate = send(request_id=request_id)
+    assert duplicate["status"] == "failed"
+    assert duplicate["evidence"]["send_error"] == 25
+    assert duplicate["evidence"]["transfer_state"] == 6
+    assert duplicate["evidence"]["local_bytes_match"] is True
+    assert duplicate["duplicate_suppressed"] and not duplicate["retry_safe"]
+    assert legacy_file.read_bytes() == before
+    assert not (root / "Library/Messages/Attachments/mac-messages-mcp").exists()
+    native.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "kind", ["symlink", "open_permissions", "request_collision", "missing_store"]
+)
+def test_staging_failures_prevent_dispatch(sandbox, kind):
+    root, _, native = sandbox
+    attachments = root / "Library/Messages/Attachments"
+    stage = attachments / "mac-messages-mcp"
+    request_id = str(uuid.uuid4())
+    if kind == "symlink":
+        elsewhere = root / "elsewhere"
+        elsewhere.mkdir()
+        stage.symlink_to(elsewhere)
+    elif kind == "open_permissions":
+        stage.mkdir(mode=0o755)
+    elif kind == "request_collision":
+        stage.mkdir(mode=0o700)
+        (stage / request_id).mkdir(mode=0o700)
+        (stage / request_id / "preserved").write_bytes(b"keep")
+    else:
+        attachments.rmdir()
+    with pytest.raises((ValueError, OSError)):
+        send(request_id=request_id)
+    native.assert_not_called()
+    assert sends.attachment_send_status(request_id)["status"] == "not_found"
+    if kind == "request_collision":
+        assert (stage / request_id / "preserved").read_bytes() == b"keep"

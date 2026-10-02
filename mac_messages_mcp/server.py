@@ -125,8 +125,9 @@ def tool_send_attachment(
     External side effect: the client must obtain authorization for the exact
     recipient and file. Uses the native Messages file-send command; no UI
     control or SMS fallback. Requires existing Messages Automation permission.
-    Files are copied to an owner-only persistent outbox before sending. No URL
-    fetching or arbitrary shell commands. Request UUIDs prevent repeat dispatch
+    Files are copied to an owner-only directory inside the native Messages
+    attachment store; the durable request ledger stays in Application Support.
+    No URL fetching or arbitrary shell commands. Request UUIDs prevent repeat dispatch
     across concurrent calls and restarts; a different UUID is a NEW SEND.
     After timeout, query tool_get_attachment_send_status. Never automatically
     retry with a new UUID. Acceptance is not delivery; structured evidence

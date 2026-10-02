@@ -121,6 +121,47 @@ def _state_dir():
     )
 
 
+def _attachments_dir():
+    return Path.home() / "Library/Messages/Attachments"
+
+
+def _stage_attachment(request_id, filename, data):
+    """Materialize where the native Messages agents already have read access.
+
+    A successful Apple event does not grant imagent access to arbitrary files:
+    staging in Application Support produced sandbox file-read-data denials,
+    message error 25, and transfer_state 6. Both imagent and IMTransferAgent's
+    shipped sandbox profiles allow ~/Library/Messages. Keep the durable ledger
+    in Application Support, but place NEW transfer bytes in the attachment store.
+    Never move or rewrite existing requests/files during an upgrade.
+    """
+    attachments = _attachments_dir()
+    if attachments.is_symlink() or not attachments.is_dir():
+        raise ValueError("The existing Messages attachment store is unavailable")
+    root = attachments / "mac-messages-mcp"
+    root.mkdir(mode=0o700, exist_ok=True)
+    info = root.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or info.st_mode & 0o077
+    ):
+        raise ValueError(
+            "Attachment staging must be an owner-only directory, not a symlink"
+        )
+    # An existing request directory is never replaced, even if a previous
+    # process crashed before committing its ledger claim.
+    request_dir = root / request_id
+    request_dir.mkdir(mode=0o700)
+    staged = request_dir / filename
+    fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "wb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return staged
+
+
 def _store():
     root = _state_dir()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -294,7 +335,7 @@ def send_attachment(
         json.dumps([recipient, filename, digest]).encode()
     ).hexdigest()
     sent_filename = f"{request_id}-{filename}"
-    root, db = _store()
+    _, db = _store()
     try:
         # Serialize claims across processes. Persist the claim BEFORE the side effect.
         db.execute("BEGIN IMMEDIATE")
@@ -311,12 +352,7 @@ def send_attachment(
             result["duplicate_suppressed"] = True
             return result
         baseline = _baseline()
-        staged = root / sent_filename
-        fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
+        staged = _stage_attachment(request_id, sent_filename, data)
         record = dict(
             request_id=request_id,
             fingerprint=fingerprint,

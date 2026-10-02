@@ -26,12 +26,23 @@ Existing Automation permission and an enabled iMessage account are required.
 Apple documents the file-reference representation in its
 [automation guide](https://developer.apple.com/library/archive/documentation/LanguagesUtilities/Conceptual/MacAutomationScriptingGuide/ReferenceFilesandFolders.html).
 
-The materialized copy is mode 0600 under the mode 0700 directory
+New materialized files are mode 0600 under mode 0700 directories at
+`~/Library/Messages/Attachments/mac-messages-mcp/REQUEST_UUID/`. The sent filename
+is `REQUEST_UUID-original-name.ext`. The prefix allows exact correlation even
+after Messages copies the file. Both native agents' existing sandbox profiles
+allow the Messages attachment store. Arbitrary Application Support paths can be
+readable to the MCP server but denied to `imagent`, producing error 25 and failed
+transfer state 6 after the native send command has already returned success.
+This placement uses existing permissions; no sandbox, TCC or system policy is
+changed. Staging failures prevent dispatch; there is no alternate-path fallback.
+
+The durable `requests.sqlite3` ledger remains in the mode 0700 directory
 `~/Library/Application Support/mac-messages-mcp/outbox` (override:
-`MAC_MESSAGES_OUTBOX_DIR`). Its sent filename is `REQUEST_UUID-original-name.ext`.
-The prefix allows exact message correlation even after Messages copies the file.
+`MAC_MESSAGES_OUTBOX_DIR`). That override changes ledger storage, not native
+attachment staging. Existing request records and legacy outbox files are never
+migrated, removed, or retried by the upgrade. A failed request remains claimed.
 Files are retained because ingestion may be asynchronous. Operators may remove
-an individual staged file after reconciling completion, but must retain
+an individual staged file only after reconciling completion, but must retain
 `requests.sqlite3` to preserve duplicate suppression. No automatic cleanup
 removes request records.
 
