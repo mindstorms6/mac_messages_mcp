@@ -15,6 +15,7 @@ from pydantic import Field
 
 from mac_messages_mcp import __version__
 from mac_messages_mcp.activity import get_latest_contact_activity
+from mac_messages_mcp.attachment_send import attachment_send_status, send_attachment
 from mac_messages_mcp.events_runtime import (
     event_status,
     events_lifespan,
@@ -62,6 +63,128 @@ mcp = MCPServer(
     lifespan=events_lifespan,
     middleware=[events_middleware],
 )
+
+
+def _attachment_result(result: dict) -> CallToolResult:
+    sanitized = sanitize_untrusted_structure(result)
+    return CallToolResult(
+        content=[
+            TextContent(
+                type="text", text=present_untrusted_output(json.dumps(sanitized))
+            )
+        ],
+        structured_content={"untrusted-mcp-output": sanitized},
+        is_error="error" in result
+        or result.get("status") in {"rejected", "failed", "ambiguous"},
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=True,
+    )
+)
+def tool_send_attachment(
+    recipient: Annotated[
+        str,
+        Field(
+            description="Exact E.164 phone number or plain email. No names, contact:N selectors, groups, or inferred recipients."
+        ),
+    ],
+    request_id: Annotated[
+        str,
+        Field(
+            description="New canonical lowercase UUID for this authorized send. Reuse the SAME ID after uncertainty; existing IDs never dispatch again."
+        ),
+    ],
+    filename: Annotated[
+        str,
+        Field(
+            description="Single filename with extension, at most 180 UTF-8 bytes. The sent filename receives a request UUID prefix for exact correlation."
+        ),
+    ],
+    content_base64: Annotated[
+        str | None,
+        Field(
+            description="Strict base64 of 1-3,000,000 bytes. Supply this OR file_path. No data URL.",
+            max_length=4_000_000,
+        ),
+    ] = None,
+    file_path: Annotated[
+        str | None,
+        Field(
+            description="Absolute regular-file path ON THE MCP SERVER HOST, at most 20,000,000 bytes. No leaf symlinks, URLs, or client-local paths. Supply this OR content_base64."
+        ),
+    ] = None,
+) -> CallToolResult:
+    """Send one native file attachment through Messages over iMessage.
+
+    External side effect: the client must obtain authorization for the exact
+    recipient and file. Uses the native Messages file-send command; no UI
+    control or SMS fallback. Requires existing Messages Automation permission.
+    Files are copied to an owner-only persistent outbox before sending. No URL
+    fetching or arbitrary shell commands. Request UUIDs prevent repeat dispatch
+    across concurrent calls and restarts; a different UUID is a NEW SEND.
+    After timeout, query tool_get_attachment_send_status. Never automatically
+    retry with a new UUID. Acceptance is not delivery; structured evidence
+    distinguishes unverified, pending, sent, delivered, failed and ambiguous.
+    A delivery flag does not prove a particular device received/opened the file.
+    File-only: captions require a separately authorized text send.
+    """
+    try:
+        return _attachment_result(
+            send_attachment(recipient, request_id, filename, content_base64, file_path)
+        )
+    except Exception as exc:
+        # Once dispatch is possible, an exception cannot prove nothing was sent.
+        return _attachment_result(
+            {
+                "status": "unverified",
+                "request_id": request_id,
+                "error": str(exc),
+                "retry_safe": False,
+                "next_step": "Query tool_get_attachment_send_status with this request_id; do not automatically send with a new ID.",
+            }
+        )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
+    )
+)
+def tool_get_attachment_send_status(
+    request_id: Annotated[
+        str,
+        Field(
+            description="Canonical UUID used with tool_send_attachment. This lookup never sends or retries."
+        ),
+    ],
+) -> CallToolResult:
+    """Read the durable attachment request and exact outgoing Messages evidence.
+
+    Returns message/attachment ROWIDs and GUIDs when correlated by the unique
+    sent filename, size, exact direct-chat recipient and pre-send ROWID boundary.
+    Never substitutes the latest unrelated message. Delivery is service evidence,
+    not proof that a specific device downloaded the file or a person opened it.
+    """
+    try:
+        return _attachment_result(attachment_send_status(request_id))
+    except Exception as exc:
+        return _attachment_result(
+            {
+                "status": "unverified",
+                "request_id": request_id,
+                "error": str(exc),
+                "retry_safe": False,
+            }
+        )
 
 
 @mcp.tool(
