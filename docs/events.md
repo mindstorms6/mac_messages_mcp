@@ -27,11 +27,27 @@ Optional environment variables:
 | `MAC_MESSAGES_EVENTS_STATE_DIR` | `~/Library/Application Support/mac-messages-mcp/events` | Durable, private state directory; must be owned by the process user and mode `0700`. |
 | `MAC_MESSAGES_EVENTS_INTERVAL` | `2` | Local database polling interval in seconds, from `0.25` through `60`. Delivery drains independently during bursts. |
 | `MAC_MESSAGES_EVENTS_DB` | `~/Library/Messages/chat.db` | Optional database path, primarily for development/testing. Always opened read-only. |
+| `MAC_MESSAGES_PROTOCOL_TRACE_FILE` | unset | Opt-in owner-only JSONL trace of bounded stdio protocol metadata for diagnosing discovery. Raw frames and application data are never logged. |
 
 Use one long-lived event-enabled process per state directory. A lock prevents
 competing workers. Short-lived stdio sessions cannot deliver while stopped:
 run under a supervisor/tunnel that keeps the process alive for ongoing events.
 Existing tool-only processes can remain event-disabled.
+
+### Bounded protocol diagnostics
+
+Set `MAC_MESSAGES_PROTOCOL_TRACE_FILE` only while diagnosing MCP negotiation.
+The trace records a fixed allowlist: protocol method category, offered/returned
+date-form protocol versions, known capability names, event catalog count, fixed
+result type, and numeric error code. It never records
+request IDs, arbitrary method/capability names, tool arguments, message data,
+headers, authentication material, callback URLs, signing secrets, or raw
+frames. The original request string and response object are forwarded unchanged.
+
+The file and directory are owner-only (`0600`/`0700`). Rotation retains at most
+the active 256 KiB file plus two backups. Disable tracing by unsetting the
+variable and restarting the supervised process. After review, remove the trace
+file and its `.1`/`.2` backups with the process stopped or tracing disabled.
 
 ### Plugin package
 

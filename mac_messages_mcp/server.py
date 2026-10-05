@@ -6,6 +6,7 @@ Mac Messages MCP - Entry point fixed for proper MCP protocol implementation
 import asyncio
 import json
 import logging
+import os
 import sys
 from typing import Annotated
 
@@ -35,6 +36,7 @@ from mac_messages_mcp.messages import (
     search_attachments,
     send_message,
 )
+from mac_messages_mcp.protocol_trace import run_stdio_with_protocol_trace
 from mac_messages_mcp.read_status import mark_read
 from mac_messages_mcp.untrusted import (
     UNTRUSTED_OUTPUT_POLICY,
@@ -913,7 +915,11 @@ def run_server() -> None:
     """Run the MCP server with proper error handling"""
     try:
         logger.info("Starting Mac Messages MCP server...")
-        mcp.run()
+        trace_path = os.environ.get("MAC_MESSAGES_PROTOCOL_TRACE_FILE")
+        if trace_path:
+            run_stdio_with_protocol_trace(mcp, trace_path)
+        else:
+            mcp.run()
     except Exception:
         logger.error("Failed to start server", exc_info=True)
         sys.exit(1)
