@@ -213,3 +213,34 @@ def test_replaced_database_pauses_events_but_keeps_tools_available(peer):
     )["result"]["structuredContent"]
     assert status["last_error"] == "SourceChangedError"
     assert status["enabled"] is False
+
+
+def test_attachment_tools_wire_schema_and_safe_rejection(peer):
+    client, _ = peer
+    tools = {t["name"]: t for t in client.request("tools/list")["result"]["tools"]}
+    send = tools["tool_send_attachment"]
+    assert set(send["inputSchema"]["required"]) == {
+        "recipient",
+        "request_id",
+        "filename",
+    }
+    assert {"file_path", "content_base64"} <= set(send["inputSchema"]["properties"])
+    assert send["annotations"]["readOnlyHint"] is False
+    assert send["annotations"]["idempotentHint"] is True
+    assert (
+        tools["tool_get_attachment_send_status"]["annotations"]["readOnlyHint"] is True
+    )
+    result = client.request(
+        "tools/call",
+        {
+            "name": "tool_send_attachment",
+            "arguments": {
+                "recipient": "invalid name",
+                "request_id": "bfca0d57-f613-4a46-b92e-149fddae53c5",
+                "filename": "fixture.txt",
+                "content_base64": "YQ==",
+            },
+        },
+    )["result"]
+    assert result["isError"] is True
+    assert result["structuredContent"]["untrusted-mcp-output"]["retry_safe"] is False

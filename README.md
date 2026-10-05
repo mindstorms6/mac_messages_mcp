@@ -645,3 +645,9 @@ or fixtures.
 
 [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) ·
 [Security](SECURITY.md) · [PyPI](https://pypi.org/project/mac-messages-mcp/)
+
+## Native attachment sends
+
+See [attachment sending](docs/attachment-sending.md) for `tool_send_attachment`,
+portable base64/server-host file inputs, exact recipients, and durable duplicate
+suppression with `tool_get_attachment_send_status`.

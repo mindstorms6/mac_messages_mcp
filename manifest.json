@@ -38,6 +38,14 @@
   },
   "tools": [
     {
+      "name": "tool_send_attachment",
+      "description": "Send one native iMessage file attachment to an exact phone/email using bounded base64 or a server-host file, with durable request UUID duplicate suppression and exact outgoing evidence. Requires client authorization."
+    },
+    {
+      "name": "tool_get_attachment_send_status",
+      "description": "Read-only attachment request reconciliation by UUID. Returns exact outgoing message/attachment identifiers and service delivery evidence without retrying."
+    },
+    {
       "name": "tool_get_latest_contact_activity",
       "description": "Read-only latest activity across every direct, named-group and unnamed-group chat containing any exact phone/email alias. Includes all senders, outgoing messages, reactions and attachment metadata; returns structured coverage and timestamps without marking read."
     },
