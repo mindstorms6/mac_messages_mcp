@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 
 from mac_messages_mcp.messages import (
     _APPLE_EPOCH,
+    _format_local_timestamp,
     _to_apple_ns,
     fuzzy_search_messages,
     get_recent_messages,
@@ -87,6 +88,14 @@ class TestFromAppleNs(unittest.TestCase):
         self.assertEqual(self._from_apple_ns(ns), _FIXED_DT)
 
 
+class TestFormatLocalTimestamp(unittest.TestCase):
+    def test_includes_iso_8601_utc_offset(self):
+        rendered = _format_local_timestamp(_FIXED_DT)
+
+        self.assertRegex(rendered, r"[+-]\d{2}:\d{2}$")
+        self.assertIsNotNone(datetime.fromisoformat(rendered).utcoffset())
+
+
 class TestGetRecentMessagesDateFormatting(unittest.TestCase):
     """Pin observable date formatting on get_recent_messages.
 
@@ -115,6 +124,7 @@ class TestGetRecentMessagesDateFormatting(unittest.TestCase):
         # The exact local time depends on the machine's tz, but the UTC
         # date is fixed -- so the year and month should appear.
         self.assertIn("2024-01-1", result)  # tolerant of TZ shifting day
+        self.assertRegex(result, r"\[[^\]]+[+-]\d{2}:\d{2}\]")
 
     @patch("mac_messages_mcp.messages._attachments_for_message_ids", return_value={})
     @patch("mac_messages_mcp.messages.get_chat_mapping", return_value={})
@@ -135,6 +145,7 @@ class TestGetRecentMessagesDateFormatting(unittest.TestCase):
         ]
         result = get_recent_messages(hours=24)
         self.assertIn("2024-01-1", result)
+        self.assertRegex(result, r"\[[^\]]+[+-]\d{2}:\d{2}\]")
 
 
 class TestFuzzySearchTimestampParam(unittest.TestCase):

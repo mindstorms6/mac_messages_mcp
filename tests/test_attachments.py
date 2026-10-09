@@ -7,6 +7,7 @@ filtering, formatting, and progressive-disclosure behaviours all work.
 """
 
 import os
+import re
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -166,6 +167,7 @@ class TestSearchAttachments(unittest.TestCase):
         self.assertIn("42", result)  # attachment id is referenceable
         self.assertIn("image/jpeg", result)  # mime type shown
         self.assertIn("invitation.jpg", result)  # transfer_name shown
+        self.assertRegex(result, r"\[[^\]]+[+-]\d{2}:\d{2}\]")
 
     @patch("mac_messages_mcp.messages.query_messages_db")
     def test_mime_type_filter_param_is_passed_to_query(self, mock_query):

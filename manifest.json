@@ -55,7 +55,7 @@
     },
     {
       "name": "tool_get_recent_messages",
-      "description": "Read-only recent Messages lookup with optional contact or group chat ID filtering. Requires Full Disk Access and returns a plain-text message summary."
+      "description": "Read-only recent Messages lookup with optional contact filtering or exact full direct/group chat GUID selection. Exact chat selection never falls back to contact or participant matching. Requires Full Disk Access and returns a timezone-qualified plain-text message summary."
     },
     {
       "name": "tool_send_message",

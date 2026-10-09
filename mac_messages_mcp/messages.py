@@ -1334,7 +1334,7 @@ def get_recent_messages(
         # Convert Apple timestamp to readable date
         try:
             date_val = _from_apple_ns(int(msg.get("date_ns", msg["date"])))
-            date_str = date_val.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+            date_str = _format_local_timestamp(date_val)
         except (ValueError, TypeError, OverflowError) as e:
             # If conversion fails, use a placeholder
             date_str = "Unknown date"
@@ -1547,7 +1547,7 @@ def fuzzy_search_messages(
         )
 
         date_val = _from_apple_ns(int(msg_dict.get("date_ns", msg_dict["date"])))
-        date_str = date_val.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        date_str = _format_local_timestamp(date_val)
 
         direction = (
             "You" if msg_dict["is_from_me"] else get_contact_name(msg_dict["handle_id"])
@@ -2129,6 +2129,11 @@ def _from_apple_ns(ts: int) -> datetime:
     return _APPLE_EPOCH + timedelta(seconds=seconds)
 
 
+def _format_local_timestamp(dt: datetime) -> str:
+    """Render a local ISO-8601 timestamp with an explicit UTC offset."""
+    return dt.astimezone().isoformat(sep=" ", timespec="seconds")
+
+
 def _resolve_attachment_path(filename: Optional[str]) -> Optional[str]:
     """Expand ~ and return an absolute path. Returns None for empty input."""
     if not filename:
@@ -2370,11 +2375,7 @@ def search_attachments(
     for row in rows:
         shaped = _shape_attachment(row)
         try:
-            date_str = (
-                _from_apple_ns(int(row["message_date"]))
-                .astimezone()
-                .strftime("%Y-%m-%d %H:%M:%S")
-            )
+            date_str = _format_local_timestamp(_from_apple_ns(int(row["message_date"])))
         except (ValueError, TypeError, OverflowError):
             date_str = "Unknown date"
         sender = (

@@ -146,6 +146,7 @@ class TestSearchQuality:
             f"Exact substring 'Eva' in message scored {score:.2f}. "
             f"Expected > 0.9 for an exact substring match."
         )
+        assert re.search(r"\[[^\]]+[+-]\d{2}:\d{2}\] \(Score:", result)
 
     def test_exact_match_scores_higher_than_fuzzy(self):
         """A message with exact 'divorce' should score higher than one with 'diverse'."""

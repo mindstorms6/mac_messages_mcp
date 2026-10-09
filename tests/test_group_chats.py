@@ -1,6 +1,8 @@
 """Regression tests for existing named and unnamed group-chat resolution."""
 
 import asyncio
+import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -117,3 +119,18 @@ def test_group_tool_schemas_describe_existing_named_and_unnamed_contract():
     ]["description"]
     assert "full GUID" in fuzzy_description
     assert "bare Identifier" in fuzzy_description
+
+
+def test_manifest_describes_exact_direct_and_group_recent_reads():
+    manifest = json.loads(
+        (Path(__file__).resolve().parents[1] / "manifest.json").read_text()
+    )
+    description = next(
+        tool["description"]
+        for tool in manifest["tools"]
+        if tool["name"] == "tool_get_recent_messages"
+    )
+
+    assert "exact full direct/group chat GUID" in description
+    assert "never falls back to contact or participant matching" in description
+    assert "group chat ID filtering" not in description

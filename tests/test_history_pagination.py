@@ -71,6 +71,7 @@ def test_empty_match_pages_reach_oldest_after_10000(history):
 def test_recent_tied_dates_no_duplicates_and_newer_insert(history):
     first = get_recent_messages(hours=0, limit=2)
     assert "message-10004" in first and "message-10003" in first
+    assert re.search(r"\[[^\]]+[+-]\d{2}:\d{2}\]", first)
     with sqlite3.connect(history) as c:
         c.execute(
             "INSERT INTO message VALUES (?, 'new arrival', NULL, 0, 1, NULL)",
