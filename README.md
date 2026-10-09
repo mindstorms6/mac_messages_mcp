@@ -19,8 +19,8 @@ Messages.app automation only when the client explicitly calls the send tool.
 
 ## What it can do
 
-- Read recent messages across all conversations or filter by contact or group
-  chat
+- Read recent messages across all conversations, filter by contact, or select
+  one direct or group chat by its exact full GUID
 - Fuzzy-search message text across a time window, including all available
   history
 - Find Contacts by approximate name and return send-ready phone numbers
@@ -49,10 +49,14 @@ No machine-specific configuration or deployment is bundled.
 `tool_get_recent_messages` and `tool_fuzzy_search_messages` accept `limit`
 (1–100 scanned messages per call), `before` (exclusive), `after` (inclusive),
 and `cursor`. Both accept `chat_id` or `contact`, mutually exclusively. Contact
-filters select message handles; chat filters include every sender in the chat.
-Fuzzy search accepts an unambiguous name or exact phone/email; resolve ambiguous
-names with `tool_find_contact` first. Date bounds use ISO-8601; dates without an
-offset mean UTC. Set `hours=0` to search older history without a relative cutoff.
+filters select message handles. For `tool_get_recent_messages`, `chat_id` must be
+the exact full GUID of one direct or group chat; it never falls back to contact,
+participant, room-name, or bare-identifier matching. Fuzzy search retains its
+existing group-ID resolution behavior. Chat filters include every sender in the
+selected chat. Fuzzy search accepts an unambiguous name or exact phone/email;
+resolve ambiguous names with `tool_find_contact` first. Date bounds use ISO-8601;
+dates without an offset mean UTC. Set `hours=0` to search older history without a
+relative cutoff.
 
 Read `next_cursor` from the response and call again with the same filters until
 `has_more=false`. Even a page with zero matches can have a continuation. The
@@ -342,7 +346,7 @@ this.
 
 | Tool                               | Purpose                                                                                                | Side effect              |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------ |
-| `tool_get_recent_messages`         | Read recent messages, optionally filtered by contact or group chat ID                                  | Read-only                |
+| `tool_get_recent_messages`         | Read recent messages, optionally filtered by contact or one exact direct/group chat GUID                | Read-only                |
 | `tool_get_latest_contact_activity` | Latest all-sender activity across every chat containing any supplied phone/email alias                 | Read-only                |
 | `tool_fuzzy_search_messages`       | Search message bodies by approximate text match; defaults to 30 days, or use `hours=0` for all history | Read-only                |
 | `tool_find_contact`                | Fuzzy-match a name in Contacts and return phone numbers                                                | Read-only                |
@@ -384,8 +388,10 @@ The server also accepts email addresses, contact names, and `contact:N`
 selections returned after an ambiguous contact search.
 
 For a group conversation, call `tool_get_chats`, pass its chat ID to
-`tool_send_message`, and set `group_chat=true`. Use the same ID as `chat_id` in
-`tool_get_recent_messages` to read that conversation.
+`tool_send_message`, and set `group_chat=true`. Pass the returned full GUID—not
+the bare identifier—as `chat_id` in `tool_get_recent_messages` to read only that
+conversation. Direct-chat GUIDs such as `iMessage;-;+14155551234` and short-code
+GUIDs such as `SMS;-;12345` work the same way.
 
 ### Latest contact activity across all chats
 

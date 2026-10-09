@@ -105,7 +105,15 @@ def test_group_tool_schemas_describe_existing_named_and_unnamed_contract():
     send_properties = tools["tool_send_message"].input_schema["properties"]
     assert "full GUID preferred" in send_properties["recipient"]["description"]
     assert "never creates" in send_properties["group_chat"]["description"]
-    for name in ("tool_get_recent_messages", "tool_fuzzy_search_messages"):
-        description = tools[name].input_schema["properties"]["chat_id"]["description"]
-        assert "full GUID" in description
-        assert "bare Identifier" in description
+    recent_description = tools["tool_get_recent_messages"].input_schema["properties"][
+        "chat_id"
+    ]["description"]
+    assert "exact chat GUID" in recent_description
+    assert "full GUID" in recent_description
+    assert "bare identifiers are not resolved" in recent_description
+
+    fuzzy_description = tools["tool_fuzzy_search_messages"].input_schema["properties"][
+        "chat_id"
+    ]["description"]
+    assert "full GUID" in fuzzy_description
+    assert "bare Identifier" in fuzzy_description

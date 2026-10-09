@@ -1088,6 +1088,30 @@ def _find_chat_by_identifier(chat_id: str) -> Optional[Dict[str, Any]]:
     )
 
 
+def _find_chat_by_guid(chat_guid: str) -> Optional[Dict[str, Any]]:
+    """Resolve exactly one direct or group chat by its canonical GUID.
+
+    This intentionally does not inspect chat_identifier, room_name, handles, or
+    Contacts. Callers using this helper have already chosen a conversation, so
+    falling back to participant matching could leak messages from other chats
+    that happen to share the same address.
+    """
+    rows = query_messages_db(
+        """
+        SELECT ROWID, guid, display_name, chat_identifier, room_name
+        FROM chat
+        WHERE guid = ?
+        LIMIT 2
+        """,
+        (chat_guid,),
+    )
+    if not rows or "error" in rows[0]:
+        return None
+    if len(rows) > 1:
+        raise ValueError("Chat GUID is not unique in the Messages database.")
+    return rows[0]
+
+
 @bound_untrusted_output
 def get_recent_messages(
     hours: int = 24,
@@ -1105,7 +1129,7 @@ def get_recent_messages(
         hours: Number of hours to look back (default: 24); 0 means all history.
         contact: Filter by contact name, phone number, or email (optional)
                 Use "contact:N" to select a specific contact from previous matches
-        chat_id: Filter by group chat identifier from tool_get_chats (optional)
+        chat_id: Filter by one exact direct or group chat GUID (optional)
 
     Returns:
         Formatted string with recent messages
@@ -1119,8 +1143,13 @@ def get_recent_messages(
     if hours > MAX_HOURS:
         return f"Error: Hours value too large. Maximum allowed is {MAX_HOURS} hours (10 years)."
 
-    if contact and chat_id:
+    if contact is not None and chat_id is not None:
         return "Error: Provide either contact or chat_id, not both."
+
+    if chat_id is not None:
+        chat_id = str(chat_id).strip()
+        if not chat_id:
+            return "Error: chat_id cannot be empty."
 
     try:
         page = HistoryPage(
@@ -1133,16 +1162,13 @@ def get_recent_messages(
     chat_row_id = None
     chat_display_name = None
 
-    if chat_id:
-        chat_id = str(chat_id).strip()
-        if not chat_id:
-            return "Error: chat_id cannot be empty."
+    if chat_id is not None:
         try:
-            chat = _find_chat_by_identifier(chat_id)
+            chat = _find_chat_by_guid(chat_id)
         except ValueError as exc:
             return f"Error: {exc}"
         if not chat:
-            return f"No group chat found with chat_id '{chat_id}'. Use tool_get_chats to list available group chats."
+            return f"No chat found with exact GUID '{chat_id}'."
         chat_row_id = chat["ROWID"]
         chat_display_name = chat.get("display_name") or chat_id
 

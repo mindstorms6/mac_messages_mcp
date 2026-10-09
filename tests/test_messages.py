@@ -13,6 +13,7 @@ from mac_messages_mcp.messages import (
     _check_imessage_availability,
     _clean_text,
     _connect_sqlite_readonly,
+    _find_chat_by_guid,
     _find_chat_by_identifier,
     _format_phone_for_messages,
     _sanitize_message_body,
@@ -663,7 +664,7 @@ class TestGetChatMapping(unittest.TestCase):
 
 
 class TestGetRecentMessagesChatFilter(unittest.TestCase):
-    """Tests for group chat filtering in get_recent_messages."""
+    """Tests for exact chat filtering in get_recent_messages."""
 
     @patch("mac_messages_mcp.messages.query_messages_db")
     def test_find_chat_by_identifier_accepts_short_chat_id(self, mock_query):
@@ -687,7 +688,7 @@ class TestGetRecentMessagesChatFilter(unittest.TestCase):
     @patch("mac_messages_mcp.messages.get_chat_mapping", return_value={})
     @patch("mac_messages_mcp.messages.get_contact_name", return_value="Alice")
     @patch(
-        "mac_messages_mcp.messages._find_chat_by_identifier",
+        "mac_messages_mcp.messages._find_chat_by_guid",
         return_value={"ROWID": 7, "display_name": "Family"},
     )
     @patch("mac_messages_mcp.messages.query_messages_db")
@@ -706,7 +707,7 @@ class TestGetRecentMessagesChatFilter(unittest.TestCase):
             }
         ]
 
-        result = get_recent_messages(hours=24, chat_id="chat123")
+        result = get_recent_messages(hours=24, chat_id="iMessage;+;chat123")
 
         sql, params = mock_query.call_args[0]
         self.assertIn("chat_message_join", sql)
@@ -719,6 +720,27 @@ class TestGetRecentMessagesChatFilter(unittest.TestCase):
         result = get_recent_messages(hours=24, contact="Alice", chat_id="chat123")
 
         self.assertIn("either contact or chat_id", result)
+
+    @patch("mac_messages_mcp.messages.query_messages_db")
+    def test_find_chat_by_guid_uses_only_exact_guid(self, mock_query):
+        mock_query.return_value = [
+            {
+                "ROWID": 8,
+                "guid": "SMS;-;12345",
+                "display_name": None,
+                "chat_identifier": "12345",
+                "room_name": None,
+            }
+        ]
+
+        result = _find_chat_by_guid("SMS;-;12345")
+
+        self.assertEqual(result["ROWID"], 8)
+        sql, params = mock_query.call_args[0]
+        self.assertIn("WHERE guid = ?", sql)
+        self.assertNotIn("chat_identifier IN", sql)
+        self.assertNotIn("room_name IN", sql)
+        self.assertEqual(params, ("SMS;-;12345",))
 
 
 class TestTimestampConversion(unittest.TestCase):

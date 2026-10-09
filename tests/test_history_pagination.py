@@ -123,3 +123,118 @@ def test_mcp_schemas_expose_continuation():
         assert {"cursor", "before", "after", "limit", "contact", "chat_id"} <= set(
             tools[name].input_schema["properties"]
         )
+
+
+@pytest.fixture
+def exact_chat_history(tmp_path):
+    path = tmp_path / "exact-chat-history.db"
+    with sqlite3.connect(path) as conn:
+        conn.executescript("""
+            CREATE TABLE message (date INTEGER, text TEXT, attributedBody BLOB,
+                is_from_me INTEGER, handle_id INTEGER, cache_roomnames TEXT);
+            CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);
+            CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, guid TEXT,
+                chat_identifier TEXT, room_name TEXT, display_name TEXT,
+                style INTEGER);
+            CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
+            INSERT INTO handle VALUES (1, '+15550001111');
+            INSERT INTO handle VALUES (2, '12345');
+            INSERT INTO chat VALUES
+                (1, 'iMessage;-;+15550001111', '+15550001111', NULL, NULL, 45),
+                (2, 'iMessage;+;chat-shared', 'chat-shared', 'chat-shared',
+                    'Shared Group', 43),
+                (3, 'SMS;-;12345', '12345', NULL, NULL, 45);
+        """)
+        messages = [
+            (parse_date("2025-01-01T12:00:00Z"), "direct-old", 1),
+            (parse_date("2025-01-02T12:00:00Z"), "group-shared-handle", 1),
+            (parse_date("2025-01-02T12:00:00Z"), "direct-middle", 1),
+            (parse_date("2025-01-03T12:00:00Z"), "direct-new", 1),
+            (parse_date("2025-01-04T12:00:00Z"), "short-code", 2),
+        ]
+        conn.executemany(
+            "INSERT INTO message VALUES (?, ?, NULL, 0, ?, NULL)", messages
+        )
+        conn.executemany(
+            "INSERT INTO chat_message_join VALUES (?, ?)",
+            [(1, 1), (2, 2), (1, 3), (1, 4), (3, 5)],
+        )
+    with (
+        patch("mac_messages_mcp.messages.get_messages_db_path", return_value=str(path)),
+        patch("mac_messages_mcp.messages.get_chat_mapping", return_value={}),
+        patch("mac_messages_mcp.messages.get_contact_name", return_value="Shared"),
+        patch(
+            "mac_messages_mcp.messages._attachments_for_message_ids", return_value={}
+        ),
+    ):
+        yield path
+
+
+def test_exact_direct_guid_isolated_from_group_with_shared_participant(
+    exact_chat_history,
+):
+    with (
+        patch("mac_messages_mcp.messages.find_contact_by_name") as contact_lookup,
+        patch("mac_messages_mcp.messages.find_handles_by_phone") as phone_lookup,
+    ):
+        result = get_recent_messages(hours=0, chat_id="iMessage;-;+15550001111")
+
+    assert "direct-old" in result
+    assert "direct-middle" in result
+    assert "direct-new" in result
+    assert "group-shared-handle" not in result
+    assert "short-code" not in result
+    contact_lookup.assert_not_called()
+    phone_lookup.assert_not_called()
+
+
+def test_exact_group_guid_isolated_from_direct_with_shared_participant(
+    exact_chat_history,
+):
+    result = get_recent_messages(hours=0, chat_id="iMessage;+;chat-shared")
+
+    assert "group-shared-handle" in result
+    assert "direct-old" not in result
+    assert "direct-middle" not in result
+    assert "direct-new" not in result
+
+
+def test_exact_short_code_guid_does_not_accept_bare_identifier(exact_chat_history):
+    result = get_recent_messages(hours=0, chat_id="SMS;-;12345")
+    bare = get_recent_messages(hours=0, chat_id="12345")
+
+    assert "short-code" in result
+    assert "No chat found with exact GUID '12345'" in bare
+
+
+def test_exact_chat_guid_preserves_pagination_and_date_filters(exact_chat_history):
+    first = get_recent_messages(hours=0, chat_id="iMessage;-;+15550001111", limit=1)
+    second = get_recent_messages(
+        hours=0,
+        chat_id="iMessage;-;+15550001111",
+        limit=1,
+        cursor=next_cursor(first),
+    )
+    bounded = get_recent_messages(
+        hours=0,
+        chat_id="iMessage;-;+15550001111",
+        after="2025-01-02",
+        before="2025-01-03",
+    )
+
+    assert "direct-new" in first and "direct-middle" not in first
+    assert "direct-middle" in second and "direct-new" not in second
+    assert "direct-middle" in bounded
+    assert "direct-old" not in bounded and "direct-new" not in bounded
+    assert "group-shared-handle" not in first + second + bounded
+
+
+def test_recent_schema_requires_exact_direct_or_group_guid():
+    tools = {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
+    description = tools["tool_get_recent_messages"].input_schema["properties"][
+        "chat_id"
+    ]["description"]
+
+    assert "exact chat GUID" in description
+    assert "direct or group chat" in description
+    assert "participant addresses" in description
