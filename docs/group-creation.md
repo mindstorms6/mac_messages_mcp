@@ -21,6 +21,14 @@ connected iMessage account and resolve every exact address back to the same
 participant handle. All participants are resolved before the chat is created.
 There is no SMS or RCS fallback.
 
+On current macOS releases, the Messages scripting dictionary exposes chat
+participants as the singular Apple-event class `pres`. Spelling `participants`
+directly in a `make` properties record therefore tries to coerce the entire
+recipient list to one participant and fails with AppleScript error `-1700`.
+The native script creates the chat at the resolved iMessage account and uses
+Messages' list-valued `ICpt` chat-participants property. Synthetic regression
+tests cover six-recipient argument transport and durable duplicate suppression.
+
 ## Result and reconciliation
 
 A verified `sent` or `delivered` result contains:

@@ -19,6 +19,14 @@ from mac_messages_mcp import group_create as groups
 from mac_messages_mcp.server import mcp
 
 RECIPIENTS = ["friend@example.com", "+12025550124"]
+MULTI_RECIPIENTS = [
+    "+12025550101",
+    "+12025550102",
+    "+12025550103",
+    "+12025550104",
+    "+12025550105",
+    "+12025550106",
+]
 MESSAGE = "synthetic initial message"
 CHAT_ID = "iMessage;+;chat-synthetic-new-group"
 MESSAGE_ID = "message-synthetic-guid"
@@ -129,6 +137,21 @@ def test_same_uuid_reconciles_without_another_dispatch(sandbox):
     ):
         create(request_id=request_id, message="different")
     sandbox[2].assert_called_once()
+
+
+def test_six_recipient_retry_remains_reconciliation_only(sandbox):
+    request_id = str(uuid.uuid4())
+
+    first = create(request_id=request_id, recipients=MULTI_RECIPIENTS)
+    duplicate = create(
+        request_id=request_id, recipients=list(reversed(MULTI_RECIPIENTS))
+    )
+
+    assert first["status"] == "sent"
+    assert duplicate["duplicate_suppressed"]
+    assert duplicate["chat_id"] == first["chat_id"]
+    assert duplicate["message_id"] == first["message_id"]
+    sandbox[2].assert_called_once_with(sorted(MULTI_RECIPIENTS), MESSAGE)
 
 
 def test_concurrent_same_uuid_dispatches_once(sandbox):
@@ -286,16 +309,19 @@ def test_native_script_is_single_imessage_create_and_send(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(subprocess, "run", native)
 
-    dispatch, chat_id, error = groups._dispatch(sorted(RECIPIENTS), MESSAGE)
+    dispatch, chat_id, error = groups._dispatch(MULTI_RECIPIENTS, MESSAGE)
 
     assert (dispatch, chat_id, error) == ("accepted", CHAT_ID, None)
     command = native.call_args.args[0]
     assert command[:2] == ["/usr/bin/osascript", "-"]
-    assert command[3:] == sorted(RECIPIENTS)
+    assert command[3:] == MULTI_RECIPIENTS
     assert not Path(command[2]).exists()
     assert native.call_args.kwargs["input"] == groups.CREATE_GROUP_SCRIPT
     assert groups.CREATE_GROUP_SCRIPT.count("make new chat") == 1
     assert groups.CREATE_GROUP_SCRIPT.count("send messageText") == 1
+    assert "make new chat at targetAccount" in groups.CREATE_GROUP_SCRIPT
+    assert "{«class ICpt»:groupParticipants}" in groups.CREATE_GROUP_SCRIPT
+    assert "{participants:groupParticipants}" not in groups.CREATE_GROUP_SCRIPT
     assert "service type = iMessage" in groups.CREATE_GROUP_SCRIPT
     assert "connection status = connected" in groups.CREATE_GROUP_SCRIPT
     assert "handle of targetParticipant" in groups.CREATE_GROUP_SCRIPT

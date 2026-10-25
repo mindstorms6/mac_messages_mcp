@@ -37,7 +37,12 @@ CREATE_GROUP_SCRIPT = """on run argv
             if (handle of targetParticipant) is not (contents of targetAddress) then error "Recipient handle mismatch"
             set end of groupParticipants to targetParticipant
         end repeat
-        set newChat to make new chat with properties {participants:groupParticipants}
+        -- On current macOS, the Messages dictionary exposes "participants"
+        -- as the singular participant class (pres).  Using that spelling in
+        -- a make-properties record makes AppleScript coerce this whole list
+        -- to one participant and fails with -1700.  ICpt is the list-valued
+        -- chat participants property used by Messages' scriptParticipants.
+        set newChat to make new chat at targetAccount with properties {«class ICpt»:groupParticipants}
         send messageText to newChat
         return id of newChat
     end tell
