@@ -253,6 +253,31 @@ def test_known_participant_coercion_exposes_safe_replacement(sandbox, monkeypatc
     sandbox[2].assert_called_once()
 
 
+def test_known_chat_properties_coercion_exposes_safe_replacement(sandbox, monkeypatch):
+    participant_list = ", ".join(
+        f'participant id "service:{recipient}"' for recipient in MULTI_RECIPIENTS
+    )
+    sandbox[2].side_effect = lambda *args: (
+        "uncertain",
+        None,
+        "execution error: Messages got an error: Can't make {«class ICpt»:"
+        f"{{{participant_list}}}}} into type properties of chat. (-1700)",
+    )
+    request_id = str(uuid.uuid4())
+
+    result = create(request_id=request_id, recipients=MULTI_RECIPIENTS)
+
+    assert result["dispatch"] == "uncertain"
+    assert result["status"] == "failed_before_creation"
+    assert result["side_effects"] == "no_chat_or_message_created"
+    assert result["replacement_request_safe"]
+    assert result["replacement_requires_authorization"]
+    assert not result["retry_safe"]
+    duplicate = create(request_id=request_id, recipients=MULTI_RECIPIENTS)
+    assert duplicate["duplicate_suppressed"]
+    sandbox[2].assert_called_once()
+
+
 def test_other_native_errors_do_not_expose_replacement(sandbox, monkeypatch):
     sandbox[2].side_effect = lambda *args: (
         "uncertain",
@@ -389,7 +414,9 @@ def test_native_script_is_single_imessage_create_and_send(tmp_path, monkeypatch)
     assert groups.CREATE_GROUP_SCRIPT.count("make new chat") == 1
     assert groups.CREATE_GROUP_SCRIPT.count("send messageText") == 1
     assert "make new chat at targetAccount" in groups.CREATE_GROUP_SCRIPT
-    assert "{«class ICpt»:groupParticipants}" in groups.CREATE_GROUP_SCRIPT
+    assert "with data groupParticipants" in groups.CREATE_GROUP_SCRIPT
+    assert "with properties" not in groups.CREATE_GROUP_SCRIPT
+    assert "«class ICpt»" not in groups.CREATE_GROUP_SCRIPT
     assert "{participants:groupParticipants}" not in groups.CREATE_GROUP_SCRIPT
     assert "service type = iMessage" in groups.CREATE_GROUP_SCRIPT
     assert "connection status = connected" in groups.CREATE_GROUP_SCRIPT

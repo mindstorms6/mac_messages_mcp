@@ -37,12 +37,12 @@ CREATE_GROUP_SCRIPT = """on run argv
             if (handle of targetParticipant) is not (contents of targetAddress) then error "Recipient handle mismatch"
             set end of groupParticipants to targetParticipant
         end repeat
-        -- On current macOS, the Messages dictionary exposes "participants"
-        -- as the singular participant class (pres).  Using that spelling in
-        -- a make-properties record makes AppleScript coerce this whole list
-        -- to one participant and fails with -1700.  ICpt is the list-valued
-        -- chat participants property used by Messages' scriptParticipants.
-        set newChat to make new chat at targetAccount with properties {«class ICpt»:groupParticipants}
+        -- Messages declares chat participants as a to-many element, not a
+        -- property.  A make-properties record therefore cannot carry this
+        -- list: "participants" compiles as singular pres, while raw ICpt is
+        -- rejected as not being part of the chat properties record.  Pass the
+        -- resolved list through make's separate contents (with data) channel.
+        set newChat to make new chat at targetAccount with data groupParticipants
         send messageText to newChat
         return id of newChat
     end tell
@@ -59,13 +59,13 @@ class RequestConflictError(ValueError):
 
 
 def _known_pre_creation_failure(record: dict) -> bool:
-    """Recognize the old participant-list coercion before ``make`` succeeded.
+    """Recognize known participant coercions before ``make`` succeeded.
 
     The pre-fix script had exactly one create statement and passed the resolved
-    participant list through Messages' singular ``participant`` property.  The
-    resulting -1700 names that list and the singular target type.  It is raised
-    while evaluating the ``make new chat`` command, before a chat object exists;
-    the following ``send`` statement is therefore unreachable.
+    participant list through invalid properties records.  The resulting -1700
+    either names the singular ``participant`` target or rejects raw ``ICpt`` as
+    a chat property.  Both are raised while evaluating ``make new chat``, before
+    a chat object exists; the following ``send`` is therefore unreachable.
     """
 
     if record.get("dispatch") != "uncertain" or record.get("dispatch_chat_id"):
@@ -74,10 +74,15 @@ def _known_pre_creation_failure(record: dict) -> bool:
     if not isinstance(error, str):
         return False
     normalized = error.replace("’", "'").replace("‘", "'")
-    return (
+    singular_participant = (
         "Can't make {participant id " in normalized
         and "} into type participant. (-1700)" in normalized
     )
+    chat_properties_record = (
+        "Can't make {«class ICpt»:{participant id " in normalized
+        and "}} into type properties of chat. (-1700)" in normalized
+    )
+    return singular_participant or chat_properties_record
 
 
 def _request_id(value: str) -> str:

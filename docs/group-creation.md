@@ -21,13 +21,16 @@ connected iMessage account and resolve every exact address back to the same
 participant handle. All participants are resolved before the chat is created.
 There is no SMS or RCS fallback.
 
-On current macOS releases, the Messages scripting dictionary exposes chat
-participants as the singular Apple-event class `pres`. Spelling `participants`
-directly in a `make` properties record therefore tries to coerce the entire
-recipient list to one participant and fails with AppleScript error `-1700`.
-The native script creates the chat at the resolved iMessage account and uses
-Messages' list-valued `ICpt` chat-participants property. Synthetic regression
-tests cover six-recipient argument transport and durable duplicate suppression.
+On current macOS releases, the Messages scripting dictionary declares chat
+participants as a to-many element rather than a property. Spelling
+`participants` in a `make` properties record compiles as the singular
+Apple-event class `pres`, so Messages tries to coerce the whole list to one
+participant and fails with `-1700`. Supplying raw `ICpt` in that record also
+fails because an element is not a member of the chat properties record. The
+native script instead passes the resolved participant list through the create
+command's separate contents channel: `with data groupParticipants`. Synthetic
+regression tests cover six-recipient argument transport, both historical
+pre-creation errors, and durable duplicate suppression.
 
 ## Result and reconciliation
 
@@ -51,16 +54,17 @@ or message was created, so `unverified` and `ambiguous` are always
 never retry with a new UUID. A different UUID always means a separately
 authorized new group and message.
 
-One historical failure is deterministically pre-creation: the pre-fix script's
-participant-list coercion error names a list of `participant id` objects, the
-singular target type `participant`, and AppleScript error `-1700`. That coercion
-is evaluated on the script's only `make new chat` statement, so no chat exists
-and the following `send` is unreachable. Status reconciliation reports this as
-`failed_before_creation`, with `side_effects=no_chat_or_message_created` and
-`replacement_request_safe=true`. The original UUID still remains permanently
-closed and `retry_safe=false`. After fresh authorization, the safe recovery is
-one replacement call with the same recipients/message and a new UUID. Status
-lookup never performs that replacement automatically.
+Two historical failures are deterministically pre-creation: coercing the list
+of `participant id` objects to singular `participant`, and coercing a record
+whose raw `ICpt` key is not a chat property to `properties of chat`. Both
+`-1700` errors are raised on the script's only `make new chat` statement, so no
+chat exists and the following `send` is unreachable. Status reconciliation
+reports either exact signature as `failed_before_creation`, with
+`side_effects=no_chat_or_message_created` and `replacement_request_safe=true`.
+The original UUID still remains permanently closed and `retry_safe=false`.
+After fresh authorization, the safe recovery is one replacement call with the
+same recipients/message and a new UUID. Status lookup never performs that
+replacement automatically.
 
 ## Permissions and enablement
 
