@@ -46,6 +46,14 @@
       "description": "Read-only attachment request reconciliation by UUID. Returns exact outgoing message/attachment identifiers and service delivery evidence without retrying."
     },
     {
+      "name": "tool_create_group_and_send",
+      "description": "Create one new iMessage group from 2-32 exact phone/email recipients and send its initial text, with recipient/iMessage validation, durable request UUID duplicate suppression, and exact chat and message GUIDs. Requires client authorization."
+    },
+    {
+      "name": "tool_get_group_creation_status",
+      "description": "Read-only reconciliation of a group creation/send by request UUID, returning exact chat/message evidence without creating, sending, or ever retrying dispatch."
+    },
+    {
       "name": "tool_get_latest_contact_activity",
       "description": "Read-only latest activity across every direct, named-group and unnamed-group chat containing any exact phone/email alias. Includes all senders, outgoing messages, reactions and attachment metadata; returns structured coverage and timestamps without marking read."
     },

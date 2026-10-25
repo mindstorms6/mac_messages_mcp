@@ -22,6 +22,11 @@ from mac_messages_mcp.events_runtime import (
     events_lifespan,
     events_middleware,
 )
+from mac_messages_mcp.group_create import (
+    RequestConflictError,
+    create_group_and_send,
+    group_creation_status,
+)
 from mac_messages_mcp.messages import (
     _check_imessage_availability,
     _format_phone_for_messages,
@@ -68,6 +73,20 @@ mcp = MCPServer(
 
 
 def _attachment_result(result: dict) -> CallToolResult:
+    sanitized = sanitize_untrusted_structure(result)
+    return CallToolResult(
+        content=[
+            TextContent(
+                type="text", text=present_untrusted_output(json.dumps(sanitized))
+            )
+        ],
+        structured_content={"untrusted-mcp-output": sanitized},
+        is_error="error" in result
+        or result.get("status") in {"rejected", "failed", "ambiguous"},
+    )
+
+
+def _group_creation_result(result: dict) -> CallToolResult:
     sanitized = sanitize_untrusted_structure(result)
     return CallToolResult(
         content=[
@@ -181,6 +200,133 @@ def tool_get_attachment_send_status(
         return _attachment_result(attachment_send_status(request_id))
     except Exception as exc:
         return _attachment_result(
+            {
+                "status": "unverified",
+                "request_id": request_id,
+                "error": str(exc),
+                "retry_safe": False,
+            }
+        )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=True,
+    )
+)
+def tool_create_group_and_send(
+    recipients: Annotated[
+        list[str],
+        Field(
+            description=(
+                "2-32 distinct phone numbers or plain emails. Phones are normalized "
+                "with the Mac's configured region; prefer E.164. No names, contact:N "
+                "selectors, short codes, or existing chat IDs."
+            ),
+            min_length=2,
+            max_length=32,
+        ),
+    ],
+    request_id: Annotated[
+        str,
+        Field(
+            description=(
+                "New canonical lowercase UUID for this authorized group creation/send. "
+                "Reuse the SAME ID after uncertainty; an existing ID never dispatches again."
+            )
+        ),
+    ],
+    message: Annotated[
+        str,
+        Field(
+            description="Nonempty initial iMessage text, at most 64,000 UTF-8 bytes.",
+            max_length=64_000,
+        ),
+    ],
+) -> CallToolResult:
+    """Create one new iMessage group and send its initial text exactly once at most.
+
+    External side effects: creates a group and sends a real message. The MCP
+    client must authorize the exact normalized recipients and message. All
+    recipients must have successful local iMessage evidence; the native script
+    then requires an enabled, connected iMessage account and verifies every
+    participant handle before creating the chat. There is no SMS/RCS fallback.
+
+    A durable UUID claim is committed before the single create-and-send script.
+    Reusing that UUID only reconciles Messages database evidence and never
+    dispatches again, including after timeout, exception, or restart. A new UUID
+    means a new group/message. Uncertain results are not retry-safe: reuse the
+    same UUID or call tool_get_group_creation_status. Successful reconciliation
+    returns the new full chat GUID as chat_id and outgoing message GUID as
+    message_id; acceptance alone is not reported as success.
+    """
+    try:
+        return _group_creation_result(
+            create_group_and_send(recipients, request_id, message)
+        )
+    except RequestConflictError as exc:
+        return _group_creation_result(
+            {
+                "status": "rejected",
+                "request_id": request_id,
+                "error": str(exc),
+                "retry_safe": False,
+                "next_step": "Query tool_get_group_creation_status for the existing UUID; authorize a genuinely new operation before using a new UUID.",
+            }
+        )
+    except ValueError as exc:
+        return _group_creation_result(
+            {
+                "status": "rejected",
+                "request_id": request_id,
+                "error": str(exc),
+                "retry_safe": True,
+            }
+        )
+    except Exception as exc:
+        return _group_creation_result(
+            {
+                "status": "unverified",
+                "request_id": request_id,
+                "error": str(exc),
+                "retry_safe": False,
+                "next_step": "Query tool_get_group_creation_status with this request_id; do not use a new UUID.",
+            }
+        )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
+    )
+)
+def tool_get_group_creation_status(
+    request_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Canonical UUID used with tool_create_group_and_send. This lookup "
+                "never creates a group, sends a message, or retries dispatch."
+            )
+        ),
+    ],
+) -> CallToolResult:
+    """Reconcile one group-creation request against local Messages evidence.
+
+    Returns chat_id and message_id only when one exact new group/message matches
+    the persisted recipient set, message digest, and pre-dispatch database
+    baselines. Missing, uncertain, failed, and ambiguous evidence never retries.
+    """
+    try:
+        return _group_creation_result(group_creation_status(request_id))
+    except Exception as exc:
+        return _group_creation_result(
             {
                 "status": "unverified",
                 "request_id": request_id,

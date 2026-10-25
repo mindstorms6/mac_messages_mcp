@@ -353,11 +353,13 @@ this.
 | `tool_get_chats`                   | List existing named and unnamed group chats with canonical GUIDs and bare identifiers                   | Read-only                |
 | `tool_search_attachments`          | Find attachment metadata by date, contact, MIME type, and limit                                        | Read-only                |
 | `tool_get_attachment`              | Fetch one attachment by ID, inline when supported or as a local path                                   | Read-only                |
+| `tool_get_group_creation_status`   | Reconcile a group creation/send UUID without retrying                                                   | Read-only                |
 | `tool_check_imessage_availability` | Check likely iMessage availability for a phone number or email                                         | Read-only                |
 | `tool_check_db_access`             | Diagnose access to `~/Library/Messages/chat.db`                                                        | Read-only                |
 | `tool_check_contacts`              | Return a contact count and a small sample                                                              | Read-only                |
 | `tool_check_addressbook`           | Diagnose Contacts/AddressBook database access                                                          | Read-only                |
 | `tool_send_message`                | Send one direct or group message through Messages.app                                                  | **Sends a real message** |
+| `tool_create_group_and_send`       | Create a new iMessage group and send its initial text with at-most-once dispatch                         | **Creates a group and sends a real message** |
 | `tool_mark_read`                   | Open one exact conversation and verify incoming messages become read locally                           | **Changes read state; may send read receipts** |
 
 <!-- markdownlint-enable MD013 -->
@@ -392,6 +394,22 @@ For a group conversation, call `tool_get_chats`, pass its chat ID to
 the bare identifier—as `chat_id` in `tool_get_recent_messages` to read only that
 conversation. Direct-chat GUIDs such as `iMessage;-;+14155551234` and short-code
 GUIDs such as `SMS;-;12345` work the same way.
+
+To create a new iMessage group, call `tool_create_group_and_send` with 2-32
+distinct phone numbers or plain email addresses, a nonempty initial message,
+and a new canonical lowercase UUID. Phone numbers are normalized with the Mac's
+configured region; E.164 is preferred. Names, `contact:N` selectors, short
+codes, and existing chat IDs are rejected. Every address must have successful
+local iMessage evidence, and Messages must expose an enabled, connected
+iMessage account. The operation never falls back to SMS/RCS.
+
+The request UUID is an at-most-once key. The server commits it before the one
+native create-and-send operation. After any timeout, exception, or uncertain
+response, reuse the same UUID or call `tool_get_group_creation_status`; never
+substitute a new UUID as a retry. Existing UUIDs reconcile database evidence
+and never dispatch again. A verified result includes the new full `chat_id` and
+outgoing `message_id`. See [new group creation](docs/group-creation.md) for the
+status model and enablement requirements.
 
 ### Latest contact activity across all chats
 
@@ -490,9 +508,10 @@ payloads, and `.pluginPayloadAttachment` containers are filtered out.
 - Attachment bytes are returned only after an explicit fetch and are
   size-limited for inline images. Filename, MIME, path, and other metadata
   text is neutralized with the same boundary; image payloads are preserved.
-- Sending is isolated in `tool_send_message`, escapes AppleScript inputs, and
-  uses a bounded execution timeout. This server does not perform human
-  confirmation; the MCP client must gate sends.
+- Sending is isolated in explicit send tools and uses bounded native execution.
+  `tool_create_group_and_send` also persists an at-most-once request claim
+  before its single native create/send operation. This server does not perform
+  human confirmation; the MCP client must gate sends and group creation.
 - Full Disk Access is broader than Messages access. Grant it only to MCP clients
   you trust and review the destination before approving a send.
 
@@ -657,3 +676,9 @@ or fixtures.
 See [attachment sending](docs/attachment-sending.md) for `tool_send_attachment`,
 portable base64/server-host file inputs, exact recipients, and durable duplicate
 suppression with `tool_get_attachment_send_status`.
+
+## New iMessage group creation
+
+See [new group creation](docs/group-creation.md) for
+`tool_create_group_and_send`, its strict recipient and iMessage checks, returned
+chat/message GUIDs, and durable retry/reconciliation contract.
