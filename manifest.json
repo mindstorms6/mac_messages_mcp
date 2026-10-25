@@ -51,7 +51,7 @@
     },
     {
       "name": "tool_get_group_creation_status",
-      "description": "Read-only reconciliation of a group creation/send by request UUID, returning exact chat/message evidence without creating, sending, or ever retrying dispatch."
+      "description": "Read-only reconciliation of a group creation/send by request UUID, returning exact chat/message evidence without creating, sending, or ever retrying the original dispatch. Recognized pre-creation failures expose an authorization-gated replacement path while permanently preserving the original UUID claim."
     },
     {
       "name": "tool_get_latest_contact_activity",

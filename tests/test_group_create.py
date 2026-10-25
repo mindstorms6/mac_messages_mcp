@@ -225,6 +225,75 @@ def test_timeout_is_durable_and_never_retries(sandbox, monkeypatch):
     sandbox[2].assert_called_once()
 
 
+def test_known_participant_coercion_exposes_safe_replacement(sandbox, monkeypatch):
+    participant_list = ", ".join(
+        f'participant id "service:{recipient}"' for recipient in MULTI_RECIPIENTS
+    )
+    sandbox[2].side_effect = lambda *args: (
+        "uncertain",
+        None,
+        "execution error: Messages got an error: Can't make "
+        f"{{{participant_list}}} into type participant. (-1700)",
+    )
+    ticks = iter([0, 6])
+    monkeypatch.setattr(groups.time, "monotonic", lambda: next(ticks))
+    request_id = str(uuid.uuid4())
+
+    result = create(request_id=request_id, recipients=MULTI_RECIPIENTS)
+
+    assert result["dispatch"] == "uncertain"
+    assert result["status"] == "failed_before_creation"
+    assert result["side_effects"] == "no_chat_or_message_created"
+    assert result["replacement_request_safe"]
+    assert result["replacement_requires_authorization"]
+    assert not result["retry_safe"]
+    assert "new canonical UUID" in result["next_step"]
+    duplicate = create(request_id=request_id, recipients=MULTI_RECIPIENTS)
+    assert duplicate["duplicate_suppressed"]
+    sandbox[2].assert_called_once()
+
+
+def test_other_native_errors_do_not_expose_replacement(sandbox, monkeypatch):
+    sandbox[2].side_effect = lambda *args: (
+        "uncertain",
+        None,
+        "execution error: Messages got an error: Can't make text into type "
+        "participant. (-1700)",
+    )
+    ticks = iter([0, 6])
+    monkeypatch.setattr(groups.time, "monotonic", lambda: next(ticks))
+
+    result = create(recipients=MULTI_RECIPIENTS)
+
+    assert result["status"] == "unverified"
+    assert not result["replacement_request_safe"]
+    assert not result["retry_safe"]
+
+
+def test_matching_database_evidence_wins_over_coercion_classification(sandbox):
+    _, _, native, add_group = sandbox
+    participant_list = ", ".join(
+        f'participant id "service:{recipient}"' for recipient in RECIPIENTS
+    )
+
+    def dispatch(recipients, message):
+        add_group(recipients=recipients, message=message)
+        return (
+            "uncertain",
+            None,
+            "execution error: Messages got an error: Can't make "
+            f"{{{participant_list}}} into type participant. (-1700)",
+        )
+
+    native.side_effect = dispatch
+    result = create()
+
+    assert result["status"] == "sent"
+    assert not result["replacement_request_safe"]
+    assert result["chat_id"] == CHAT_ID
+    assert result["message_id"] == MESSAGE_ID
+
+
 def test_crash_after_claim_is_reconciliation_only(sandbox):
     sandbox[2].side_effect = RuntimeError("synthetic crash")
     request_id = str(uuid.uuid4())
@@ -346,6 +415,10 @@ def test_tool_schema_documents_side_effect_ids_and_retry_contract():
     assert (
         "never creates a group"
         in status_tool.input_schema["properties"]["request_id"]["description"]
+    )
+    assert "failed_before_creation" in status_tool.description
+    assert "original UUID remains permanently closed" in " ".join(
+        status_tool.description.split()
     )
 
 

@@ -58,6 +58,28 @@ class RequestConflictError(ValueError):
     """The UUID already protects a different group creation/send."""
 
 
+def _known_pre_creation_failure(record: dict) -> bool:
+    """Recognize the old participant-list coercion before ``make`` succeeded.
+
+    The pre-fix script had exactly one create statement and passed the resolved
+    participant list through Messages' singular ``participant`` property.  The
+    resulting -1700 names that list and the singular target type.  It is raised
+    while evaluating the ``make new chat`` command, before a chat object exists;
+    the following ``send`` statement is therefore unreachable.
+    """
+
+    if record.get("dispatch") != "uncertain" or record.get("dispatch_chat_id"):
+        return False
+    error = record.get("dispatch_error")
+    if not isinstance(error, str):
+        return False
+    normalized = error.replace("’", "'").replace("‘", "'")
+    return (
+        "Can't make {participant id " in normalized
+        and "} into type participant. (-1700)" in normalized
+    )
+
+
 def _request_id(value: str) -> str:
     if not isinstance(value, str) or str(uuid.UUID(value)) != value:
         raise ValueError("request_id must be a canonical lowercase UUID")
@@ -317,9 +339,30 @@ def _report(record: dict) -> dict:
     result["recipients"] = json.loads(record["recipients_json"])
     result.update(_evidence(record))
     result["retry_safe"] = False
-    result["next_step"] = (
-        "Reuse this request_id or query tool_get_group_creation_status; never retry with a new UUID after uncertainty."
-    )
+    if result.get("status") == "unverified" and _known_pre_creation_failure(record):
+        result.update(
+            {
+                "status": "failed_before_creation",
+                "side_effects": "no_chat_or_message_created",
+                "reconciliation_basis": (
+                    "known pre-creation AppleScript participant-list coercion (-1700)"
+                ),
+                "replacement_request_safe": True,
+                "replacement_requires_authorization": True,
+                "next_step": (
+                    "This request_id remains permanently closed. After explicit "
+                    "authorization for a replacement operation, call "
+                    "tool_create_group_and_send once with the same recipients and "
+                    "message and a new canonical UUID."
+                ),
+            }
+        )
+    else:
+        result["replacement_request_safe"] = False
+        result["next_step"] = (
+            "Reuse this request_id or query tool_get_group_creation_status; "
+            "never retry with a new UUID after uncertainty."
+        )
     return result
 
 
@@ -428,7 +471,14 @@ def create_group_and_send(recipients: list[str], request_id: str, message: str) 
         while True:
             result = _report(record)
             if (
-                result["status"] in {"sent", "delivered", "failed", "ambiguous"}
+                result["status"]
+                in {
+                    "sent",
+                    "delivered",
+                    "failed",
+                    "failed_before_creation",
+                    "ambiguous",
+                }
                 or time.monotonic() >= deadline
             ):
                 return result

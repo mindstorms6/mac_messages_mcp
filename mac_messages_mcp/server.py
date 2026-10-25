@@ -96,7 +96,8 @@ def _group_creation_result(result: dict) -> CallToolResult:
         ],
         structured_content={"untrusted-mcp-output": sanitized},
         is_error="error" in result
-        or result.get("status") in {"rejected", "failed", "ambiguous"},
+        or result.get("status")
+        in {"rejected", "failed", "failed_before_creation", "ambiguous"},
     )
 
 
@@ -322,6 +323,9 @@ def tool_get_group_creation_status(
     Returns chat_id and message_id only when one exact new group/message matches
     the persisted recipient set, message digest, and pre-dispatch database
     baselines. Missing, uncertain, failed, and ambiguous evidence never retries.
+    A recognized historical -1700 participant-list coercion is reported as
+    failed_before_creation, with a separately authorized replacement request as
+    the only recovery path; the original UUID remains permanently closed.
     """
     try:
         return _group_creation_result(group_creation_status(request_id))

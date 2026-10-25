@@ -51,6 +51,17 @@ or message was created, so `unverified` and `ambiguous` are always
 never retry with a new UUID. A different UUID always means a separately
 authorized new group and message.
 
+One historical failure is deterministically pre-creation: the pre-fix script's
+participant-list coercion error names a list of `participant id` objects, the
+singular target type `participant`, and AppleScript error `-1700`. That coercion
+is evaluated on the script's only `make new chat` statement, so no chat exists
+and the following `send` is unreachable. Status reconciliation reports this as
+`failed_before_creation`, with `side_effects=no_chat_or_message_created` and
+`replacement_request_safe=true`. The original UUID still remains permanently
+closed and `retry_safe=false`. After fresh authorization, the safe recovery is
+one replacement call with the same recipients/message and a new UUID. Status
+lookup never performs that replacement automatically.
+
 ## Permissions and enablement
 
 The MCP server host needs:

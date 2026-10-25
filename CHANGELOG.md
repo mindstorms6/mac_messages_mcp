@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recipients through Messages' list-valued `ICpt` chat-participants property.
   The scripting dictionary's `participants` spelling compiles to singular
   `pres` and rejected multi-recipient lists with AppleScript error `-1700`.
+- Fork: group-creation reconciliation now classifies that exact historical
+  `-1700` participant-list coercion as `failed_before_creation` and exposes a
+  separately authorized replacement request as the safe recovery path. The
+  original durable UUID claim remains closed and is never cleared or retried.
 
 ### Added
 - Fork: added `tool_create_group_and_send` for strict exact-address iMessage group creation plus an initial text, with local availability checks, durable UUID at-most-once dispatch, exact participant/message reconciliation, and returned chat/message GUIDs. `tool_get_group_creation_status` performs read-only reconciliation without retrying.
